@@ -1,6 +1,6 @@
 # The Closer
 
-This is a utility that, when executed, closes the window at the current mouse cursor position. Multiple methods of closing a window are supported and this behavior is configurable per application via app.config settings.
+This is a utility that, when executed, closes the window or tab currently under the mouse cursor, even if the window is not active (i.e. does not have focus). Multiple methods of closing a window are supported and can be configured per application via app.config settings. The default behavior is CTRL-W.
 
 ## Supported methods
 
