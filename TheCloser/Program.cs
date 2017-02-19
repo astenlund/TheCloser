@@ -12,11 +12,17 @@ namespace TheCloser
         public static void Main()
         {
             var windowHandle = NativeMethods.WindowFromPoint(NativeMethods.GetMouseCursorPosition());
-            NativeMethods.SetForegroundWindow(windowHandle);
-            var process = Process.GetProcessById(NativeMethods.GetProcessIdFromWindowHandle(windowHandle));
 
-            switch (ConfigurationManager.AppSettings[process.ProcessName])
+            NativeMethods.SetForegroundWindow(windowHandle);
+
+            var process = Process.GetProcessById(NativeMethods.GetProcessIdFromWindowHandle(windowHandle));
+            var killMethod = ConfigurationManager.AppSettings[process.ProcessName];
+
+            switch (killMethod?.ToUpperInvariant())
             {
+                case "ESCAPE":
+                    InputSimulator.Keyboard.KeyPress(VirtualKeyCode.ESCAPE);
+                    break;
                 case "CTRL-W":
                     InputSimulator.Keyboard.ModifiedKeyStroke(VirtualKeyCode.CONTROL, VirtualKeyCode.VK_W);
                     break;
@@ -24,16 +30,16 @@ namespace TheCloser
                     InputSimulator.Keyboard.ModifiedKeyStroke(VirtualKeyCode.CONTROL, VirtualKeyCode.F4);
                     break;
                 case "WM_DESTROY":
-                    NativeMethods.PostMessage(windowHandle, NativeMethods.WindowsMessage.WM_DESTROY);
+                    NativeMethods.PostMessage(windowHandle, NativeMethods.WindowNotification.WM_DESTROY);
                     break;
                 case "WM_CLOSE":
-                    NativeMethods.PostMessage(windowHandle, NativeMethods.WindowsMessage.WM_CLOSE);
+                    NativeMethods.PostMessage(windowHandle, NativeMethods.WindowNotification.WM_CLOSE);
                     break;
                 case "WM_QUIT":
-                    NativeMethods.PostMessage(windowHandle, NativeMethods.WindowsMessage.WM_QUIT);
+                    NativeMethods.PostMessage(windowHandle, NativeMethods.WindowNotification.WM_QUIT);
                     break;
                 default:
-                    NativeMethods.PostMessage(windowHandle, NativeMethods.WindowsMessage.WM_CLOSE);
+                    InputSimulator.Keyboard.ModifiedKeyStroke(VirtualKeyCode.CONTROL, VirtualKeyCode.VK_W);
                     break;
             }
         }

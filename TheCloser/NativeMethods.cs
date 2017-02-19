@@ -8,7 +8,7 @@ namespace TheCloser
     [SuppressMessage("ReSharper", "InconsistentNaming")]
     public static class NativeMethods
     {
-        public enum WindowsMessage : uint
+        public enum WindowNotification : uint
         {
             WM_DESTROY = 0x0002,
             WM_CLOSE = 0x0010,
@@ -29,7 +29,7 @@ namespace TheCloser
             return (int)lpdwProcessId;
         }
 
-        public static void PostMessage(IntPtr hWnd, WindowsMessage message)
+        public static void PostMessage(IntPtr hWnd, WindowNotification message)
         {
             PostMessage(hWnd, (uint)message, IntPtr.Zero, IntPtr.Zero);
         }

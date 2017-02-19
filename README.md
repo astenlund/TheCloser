@@ -4,6 +4,7 @@ This is a utility that, when executed, closes the window at the current mouse cu
 
 ## Supported methods
 
+- Keyboard: ESCAPE
 - Keyboard: CTRL-W
 - Keyboard: CTRL-F4
 - Windows Message: WM_DESTROY
@@ -19,10 +20,9 @@ This is a utility that, when executed, closes the window at the current mouse cu
     &lt;supportedRuntime version="v4.0" sku=".NETFramework,Version=v4.5.2" /&gt;
   &lt;/startup&gt;
   &lt;appSettings&gt;
-    &lt;add key="chrome" value="CTRL-W" /&gt;
-    &lt;add key="sublime_text" value="CTRL-W" /&gt;
-    &lt;add key="explorer" value="CTRL-W"/&gt;
-    &lt;add key="notepad" value="WM_QUIT"/&gt;
+    &lt;add key="devenv" value="CTRL-F4" /&gt;
+    &lt;add key="notepad" value="WM_QUIT" /&gt;
+    &lt;add key="pageant" value="ESCAPE" /&gt;
   &lt;/appSettings&gt;
 &lt;/configuration&gt;
 </code></pre>
