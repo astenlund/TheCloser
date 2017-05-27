@@ -1,4 +1,5 @@
-﻿using System.Configuration;
+﻿using System;
+using System.Configuration;
 using System.Diagnostics;
 using WindowsInput;
 using WindowsInput.Native;
@@ -13,7 +14,10 @@ namespace TheCloser
         {
             var windowHandle = NativeMethods.WindowFromPoint(NativeMethods.GetMouseCursorPosition());
 
-            NativeMethods.SetForegroundWindow(windowHandle);
+            if (!NativeMethods.SetForegroundWindow(windowHandle))
+            {
+                Environment.Exit(1);
+            }
 
             var process = Process.GetProcessById(NativeMethods.GetProcessIdFromWindowHandle(windowHandle));
             var killMethod = ConfigurationManager.AppSettings[process.ProcessName];
