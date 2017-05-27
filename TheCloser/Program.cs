@@ -14,9 +14,12 @@ namespace TheCloser
         {
             var windowHandle = NativeMethods.WindowFromPoint(NativeMethods.GetMouseCursorPosition());
 
-            if (!NativeMethods.SetForegroundWindow(windowHandle))
+            if (NativeMethods.GetForegroundWindow() != windowHandle)
             {
-                Environment.Exit(1);
+                if (!NativeMethods.SetForegroundWindow(windowHandle))
+                {
+                    Environment.Exit(1);
+                }
             }
 
             var process = Process.GetProcessById(NativeMethods.GetProcessIdFromWindowHandle(windowHandle));
