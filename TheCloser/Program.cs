@@ -29,6 +29,9 @@ namespace TheCloser
                 case "CTRL-F4":
                     InputSimulator.Keyboard.ModifiedKeyStroke(VirtualKeyCode.CONTROL, VirtualKeyCode.F4);
                     break;
+                case "ALT-F4":
+                    InputSimulator.Keyboard.ModifiedKeyStroke(VirtualKeyCode.LMENU, VirtualKeyCode.F4);
+                    break;
                 case "WM_DESTROY":
                     NativeMethods.PostMessage(windowHandle, NativeMethods.WindowNotification.WM_DESTROY);
                     break;

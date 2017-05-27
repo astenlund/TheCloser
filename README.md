@@ -4,12 +4,13 @@ This is a utility that, when executed, closes the window or tab currently under 
 
 ## Supported methods
 
-- Keyboard: ESCAPE
-- Keyboard: CTRL-W
-- Keyboard: CTRL-F4
 - Windows Message: WM_DESTROY
 - Windows Message: WM_CLOSE
 - Windows Message: WM_QUIT
+- Keyboard: ESCAPE
+- Keyboard: ALT-F4
+- Keyboard: CTRL-W
+- Keyboard: CTRL-F4
 
 ## Example app.config
 
