@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Configuration;
 using System.Diagnostics;
 using WindowsInput;
@@ -8,50 +9,60 @@ namespace TheCloser
 {
     public class Program
     {
+        private const string DefaultKillMethod = "CTRL-W";
+
+        private static readonly IReadOnlyDictionary<string, Action<IntPtr>> KillActions = new Dictionary<string, Action<IntPtr>>
+            {
+                {"WM_DESTROY", handle => NativeMethods.PostMessage(handle, NativeMethods.WindowNotification.WM_DESTROY)},
+                {"WM_CLOSE", handle => NativeMethods.PostMessage(handle, NativeMethods.WindowNotification.WM_CLOSE)},
+                {"WM_QUIT", handle => NativeMethods.PostMessage(handle, NativeMethods.WindowNotification.WM_QUIT)},
+                {"ESCAPE", handle => TrySendKeyPress(handle, VirtualKeyCode.ESCAPE)},
+                {"ALT-F4", handle => TrySendKeyPress(handle, VirtualKeyCode.F4, VirtualKeyCode.LMENU)},
+                {"CTRL-W", handle => TrySendKeyPress(handle, VirtualKeyCode.VK_W, VirtualKeyCode.CONTROL)},
+                {"CTRL-F4", handle => TrySendKeyPress(handle, VirtualKeyCode.F4, VirtualKeyCode.CONTROL)}
+            };
+
         private static readonly InputSimulator InputSimulator = new InputSimulator();
 
         public static void Main()
         {
-            var windowHandle = NativeMethods.WindowFromPoint(NativeMethods.GetMouseCursorPosition());
+            var targetHandle = NativeMethods.WindowFromPoint(NativeMethods.GetMouseCursorPosition());
+            var targetProcess = Process.GetProcessById(NativeMethods.GetProcessIdFromWindowHandle(targetHandle));
 
-            if (NativeMethods.GetForegroundWindow() != windowHandle)
+            GetKillAction(GetKillMethod(targetProcess))?.Invoke(targetHandle);
+        }
+
+        private static string GetKillMethod(Process process)
+        {
+            return ConfigurationManager.AppSettings[process.ProcessName]?.ToUpperInvariant() ?? DefaultKillMethod;
+        }
+
+        private static Action<IntPtr> GetKillAction(string killMethod)
+        {
+            return KillActions.TryGetValue(killMethod, out Action<IntPtr> killAction) ? killAction : null;
+        }
+
+        private static void TrySendKeyPress(IntPtr handle, VirtualKeyCode keyCode, VirtualKeyCode modifierKeyCode = default(VirtualKeyCode))
+        {
+            if (!TrySetForegroundWindow(handle))
             {
-                if (!NativeMethods.SetForegroundWindow(windowHandle))
-                {
-                    Environment.Exit(1);
-                }
+                return;
             }
 
-            var process = Process.GetProcessById(NativeMethods.GetProcessIdFromWindowHandle(windowHandle));
-            var killMethod = ConfigurationManager.AppSettings[process.ProcessName];
-
-            switch (killMethod?.ToUpperInvariant())
+            if (modifierKeyCode != default(VirtualKeyCode))
             {
-                case "ESCAPE":
-                    InputSimulator.Keyboard.KeyPress(VirtualKeyCode.ESCAPE);
-                    break;
-                case "CTRL-W":
-                    InputSimulator.Keyboard.ModifiedKeyStroke(VirtualKeyCode.CONTROL, VirtualKeyCode.VK_W);
-                    break;
-                case "CTRL-F4":
-                    InputSimulator.Keyboard.ModifiedKeyStroke(VirtualKeyCode.CONTROL, VirtualKeyCode.F4);
-                    break;
-                case "ALT-F4":
-                    InputSimulator.Keyboard.ModifiedKeyStroke(VirtualKeyCode.LMENU, VirtualKeyCode.F4);
-                    break;
-                case "WM_DESTROY":
-                    NativeMethods.PostMessage(windowHandle, NativeMethods.WindowNotification.WM_DESTROY);
-                    break;
-                case "WM_CLOSE":
-                    NativeMethods.PostMessage(windowHandle, NativeMethods.WindowNotification.WM_CLOSE);
-                    break;
-                case "WM_QUIT":
-                    NativeMethods.PostMessage(windowHandle, NativeMethods.WindowNotification.WM_QUIT);
-                    break;
-                default:
-                    InputSimulator.Keyboard.ModifiedKeyStroke(VirtualKeyCode.CONTROL, VirtualKeyCode.VK_W);
-                    break;
+                InputSimulator.Keyboard.ModifiedKeyStroke(modifierKeyCode, keyCode);
             }
+            else
+            {
+                InputSimulator.Keyboard.KeyPress(keyCode);
+            }
+        }
+
+        private static bool TrySetForegroundWindow(IntPtr windowHandle)
+        {
+            return NativeMethods.GetForegroundWindow() == windowHandle ||
+                   NativeMethods.SetForegroundWindow(windowHandle);
         }
     }
 }
