@@ -1,6 +1,6 @@
 # The Closer
 
-This is a utility that, when executed, closes the window or tab currently under the mouse cursor, even if the window is not active (i.e. does not have focus). Multiple methods of closing a window are supported and can be configured per application via app.config settings. The default behavior is CTRL-W.
+This is a utility that, when executed, closes the window or tab currently under the mouse cursor, even if the window is not active (i.e. does not have focus). Multiple methods of closing a window are supported and can be configured per application via the appsettings.json file. The default behavior is CTRL-W.
 
 ## Supported methods
 
@@ -12,18 +12,25 @@ This is a utility that, when executed, closes the window or tab currently under 
 - Keyboard: CTRL-W
 - Keyboard: CTRL-F4
 
-## Example app.config
+## Example appsettings.json
 
-<pre><code class="language-xml">
-&lt;?xml version="1.0" encoding="utf-8" ?&gt;
-&lt;configuration&gt;
-  &lt;startup&gt;
-    &lt;supportedRuntime version="v4.0" sku=".NETFramework,Version=v4.5.2" /&gt;
-  &lt;/startup&gt;
-  &lt;appSettings&gt;
-    &lt;add key="devenv" value="CTRL-F4" /&gt;
-    &lt;add key="notepad" value="WM_QUIT" /&gt;
-    &lt;add key="pageant" value="ESCAPE" /&gt;
-  &lt;/appSettings&gt;
-&lt;/configuration&gt;
-</code></pre>
+```javascript
+{
+    "Calculator": "WM_CLOSE",
+    "devenv": "CTRL-F4",
+    "MicrosoftEdge": "CTRL-W",
+    "mpc-hc64": "ALT-F4",
+    "notepad": "WM_QUIT",
+    "nwc2": "CTRL-F4",
+    "pageant": "ESCAPE",
+    "PicasaPhotoViewer": "WM_CLOSE",
+    "PicoViewer": "WM_CLOSE",
+    "Rambox": "WM_CLOSE",
+    "Resilio Sync": "ALT-F4",
+    "rider64": "CTRL-F4",
+    "SystemSettings": "WM_CLOSE",
+    "TARGETGUI": "WM_CLOSE",
+    "TeamViewer": "CTRL-F4",
+    "WinStore.App": "WM_CLOSE"
+}
+```
