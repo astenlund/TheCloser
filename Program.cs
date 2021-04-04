@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.InteropServices;
 using GregsStack.InputSimulatorStandard;
 using GregsStack.InputSimulatorStandard.Native;
 using Microsoft.Extensions.Configuration;
@@ -30,12 +31,16 @@ namespace TheCloser
             { "CTRL-F4", handle => TrySendKeyPress(handle, VirtualKeyCode.F4, VirtualKeyCode.CONTROL) }
         };
 
+        private static readonly string LogPath = Path.Combine(Path.GetTempPath(), "TheCloser.txt");
+
         public static void Main()
         {
             var targetHandle = NativeMethods.WindowFromPoint(NativeMethods.GetMouseCursorPosition());
             var targetProcess = Process.GetProcessById(NativeMethods.GetProcessIdFromWindowHandle(targetHandle));
             var killMethod = GetKillMethod(targetProcess);
             var killAction = GetKillAction(killMethod);
+
+            Log($"{targetProcess.ProcessName} -> {killMethod}");
 
             killAction?.Invoke(targetHandle);
         }
@@ -46,10 +51,15 @@ namespace TheCloser
         private static string GetKillMethod(Process process) =>
             Config[process.ProcessName]?.ToUpperInvariant() ?? DefaultKillMethod;
 
+        private static void Log(string msg) => File.AppendAllText(LogPath, msg + Environment.NewLine);
+
         private static void TrySendKeyPress(IntPtr handle, VirtualKeyCode keyCode, VirtualKeyCode modifierKeyCode = default)
         {
-            if (!TrySetForegroundWindow(handle))
+            var (success, error) = TrySetForegroundWindow(handle);
+
+            if (!success)
             {
+                Log($"Window activation failed (error code: {error})");
                 return;
             }
 
@@ -63,8 +73,16 @@ namespace TheCloser
             }
         }
 
-        private static bool TrySetForegroundWindow(IntPtr windowHandle) =>
-            NativeMethods.GetForegroundWindow() == windowHandle ||
-            NativeMethods.SetForegroundWindow(windowHandle);
+        private static (bool success, int error) TrySetForegroundWindow(IntPtr windowHandle)
+        {
+            var success = NativeMethods.GetForegroundWindow() == windowHandle ||
+                          NativeMethods.SetForegroundWindow(windowHandle);
+
+            var error = success
+                ? 0
+                : Marshal.GetLastWin32Error();
+
+            return (success, error);
+        }
     }
 }
