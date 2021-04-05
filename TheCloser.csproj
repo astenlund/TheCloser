@@ -7,6 +7,7 @@
         <PublishReadyToRun>true</PublishReadyToRun>
         <PublishSingleFile>true</PublishSingleFile>
         <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+        <ApplicationIcon>img\icon.ico</ApplicationIcon>
         <LangVersion>default</LangVersion>
         <Nullable>enable</Nullable>
     </PropertyGroup>
