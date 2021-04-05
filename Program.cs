@@ -1,18 +1,23 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Linq;
+using System.Threading.Tasks;
+using System.Windows.Forms;
 using GregsStack.InputSimulatorStandard;
 using GregsStack.InputSimulatorStandard.Native;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
 
 namespace TheCloser
 {
     public static class Program
     {
         private const string DefaultKillMethod = "CTRL-W";
+        private const string ToolTip = "The Closer";
 
         private static readonly IConfigurationRoot Config = new ConfigurationBuilder()
             .SetBasePath(Path.GetDirectoryName(Process.GetCurrentProcess().MainModule!.FileName))
@@ -33,14 +38,22 @@ namespace TheCloser
         };
 
         private static readonly string LogPath = Path.Combine(Path.GetTempPath(), "TheCloser.txt");
+        private static NotifyIcon _notifyIcon;
 
-        public static void Main(string[] args)
+        [STAThread]
+        public static async Task Main(string[] args)
         {
+            var host = Host.CreateDefaultBuilder(args).Build();
+
+            InitializeContext();
+
             var arg = args.SingleOrDefault()?.ToLowerInvariant();
             if (arg == "-e" || arg == "--execute")
             {
                 Execute();
             }
+
+            await host.StartAsync();
         }
 
         private static void Execute()
@@ -60,6 +73,20 @@ namespace TheCloser
 
         private static string GetKillMethod(Process process) =>
             Config[process.ProcessName]?.ToUpperInvariant() ?? DefaultKillMethod;
+
+        private static void InitializeContext()
+        {
+            _notifyIcon = new NotifyIcon(new Container())
+            {
+                ContextMenuStrip = new ContextMenuStrip(),
+                Icon = Properties.Resources.TrayIcon,
+                Text = ToolTip,
+                Visible = true
+            };
+
+            // notifyIcon.ContextMenuStrip.Opening += ContextMenuStrip_Opening;
+            // notifyIcon.DoubleClick += notifyIcon_DoubleClick;
+        }
 
         private static void Log(string msg) => File.AppendAllText(LogPath, msg + Environment.NewLine);
 
