@@ -1,5 +1,5 @@
-﻿using System.Diagnostics.CodeAnalysis;
-using System.Drawing;
+﻿using Microsoft.Win32.SafeHandles;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 
 namespace TheCloser;
@@ -8,7 +8,6 @@ namespace TheCloser;
 internal static class NativeMethods
 {
     public const uint GA_ROOT = 2;
-
     public enum WindowNotification : uint
     {
         WM_DESTROY = 0x0002,
@@ -32,6 +31,20 @@ internal static class NativeMethods
     {
         PostMessage(hWnd, (uint)message, IntPtr.Zero, IntPtr.Zero);
     }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct SECURITY_ATTRIBUTES
+    {
+        public int nLength;
+        public IntPtr lpSecurityDescriptor;
+        public int bInheritHandle;
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    public static extern SafePipeHandle CreateNamedPipe(string lpName, uint dwOpenMode, uint dwPipeMode, uint nMaxInstances, uint nOutBufferSize, uint nInBufferSize, uint nDefaultTimeOut, ref SECURITY_ATTRIBUTES securityAttributes);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    public static extern bool ConnectNamedPipe(SafePipeHandle hNamedPipe, IntPtr lpOverlapped);
 
     public static IntPtr GetRootWindow(IntPtr hWnd)
     {
@@ -100,7 +113,7 @@ internal static class NativeMethods
     ///     function.
     ///     </para>
     /// </remarks>
-    // For Windows Mobile, replace user32.dll with coredll.dll
+    // For Windows Mobile, replace user32.dll with coredll.dll 
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool SetForegroundWindow(IntPtr hWnd);

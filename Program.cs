@@ -1,5 +1,8 @@
 ﻿using System.Diagnostics;
+using System.IO.Pipes;
 using System.Runtime.InteropServices;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using GregsStack.InputSimulatorStandard;
 using GregsStack.InputSimulatorStandard.Native;
 using Microsoft.Extensions.Configuration;
@@ -9,9 +12,11 @@ namespace TheCloser;
 public static class Program
 {
     private const string DefaultKillMethod = "CTRL-W";
+    private const string KillMessage = "KILL";
+    private const string PipeName = "TheCloserNamedPipe";
 
     private static readonly IConfigurationRoot Config = new ConfigurationBuilder()
-        .SetBasePath(Path.GetDirectoryName(Process.GetCurrentProcess().MainModule!.FileName))
+        .SetBasePath(Path.GetDirectoryName(Environment.ProcessPath))
         .AddJsonFile("appsettings.json", true)
         .Build();
 
@@ -31,15 +36,81 @@ public static class Program
 
     private static readonly string LogPath = Path.Combine(Path.GetTempPath(), "TheCloser.txt");
 
-    public static void Main()
+    [STAThread]
+    public static async Task Main(string[] args)
     {
         using var guard = SingleInstanceGuard.Create();
 
         if (guard == null)
         {
+            if (args.FirstOrDefault() is "--execute" or "-e")
+            {
+                await SendKillMessage();
+            }
+
             return;
         }
 
+        using var trayIcon = new NotifyIcon();
+
+        trayIcon.Icon = new Icon("TheCloser.ico");
+        trayIcon.Visible = true;
+        trayIcon.Text = "The Closer";
+
+        var contextMenu = new ContextMenuStrip();
+        var exitMenuItem = new ToolStripMenuItem("Exit", null, (_, _) => Application.Exit());
+
+        contextMenu.Items.Add(exitMenuItem);
+        trayIcon.ContextMenuStrip = contextMenu;
+
+        var cts = new CancellationTokenSource();
+        _ = Task.Run(() => StartNamedPipeServerAsync(cts.Token), cts.Token);
+
+        Application.ApplicationExit += (_, _) => cts.Cancel();
+        Application.Run();
+    }
+
+    private static async Task StartNamedPipeServerAsync(CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            var pipeSecurity = new PipeSecurity();
+
+            pipeSecurity.AddAccessRule(new PipeAccessRule(new SecurityIdentifier(WellKnownSidType.WorldSid, null), PipeAccessRights.ReadWrite, AccessControlType.Allow));
+
+            await using var serverStream = NamedPipeServerFactory.Create(PipeName, pipeSecurity);
+            await serverStream.WaitForConnectionAsync(ct).ConfigureAwait(false);
+
+            try
+            {
+                using var reader = new StreamReader(serverStream);
+
+                while (await reader.ReadLineAsync(ct) is { } message)
+                {
+                    if (message == KillMessage)
+                    {
+                        Kill();
+                    }
+                }
+            }
+            catch (IOException)
+            {
+                // Ignore IOException (error code 232) caused by client closing the connection
+            }
+        }
+    }
+
+    private static async Task SendKillMessage()
+    {
+        await using var clientStream = new NamedPipeClientStream(".", PipeName, PipeDirection.Out, PipeOptions.Asynchronous);
+        await clientStream.ConnectAsync();
+        await using var writer = new StreamWriter(clientStream);
+        await writer.WriteLineAsync(KillMessage);
+        await writer.FlushAsync();
+    }
+
+    private static void Kill()
+    {
         var targetHandle = NativeMethods.WindowFromPoint(NativeMethods.GetMouseCursorPosition());
         var targetProcess = Process.GetProcessById(NativeMethods.GetProcessIdFromWindowHandle(targetHandle));
         var killMethod = GetKillMethod(targetProcess);
@@ -50,11 +121,9 @@ public static class Program
         killAction?.Invoke(targetHandle);
     }
 
-    private static Action<IntPtr>? GetKillAction(string killMethod) =>
-        KillActions.TryGetValue(killMethod, out var killAction) ? killAction : null;
+    private static Action<IntPtr>? GetKillAction(string killMethod) => KillActions.TryGetValue(killMethod, out var killAction) ? killAction : null;
 
-    private static string GetKillMethod(Process process) =>
-        Config[process.ProcessName]?.ToUpperInvariant() ?? DefaultKillMethod;
+    private static string GetKillMethod(Process process) => Config[process.ProcessName]?.ToUpperInvariant() ?? DefaultKillMethod;
 
     private static void Log(string msg) => File.AppendAllText(LogPath, msg + Environment.NewLine);
 
