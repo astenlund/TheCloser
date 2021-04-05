@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Linq;
 using GregsStack.InputSimulatorStandard;
 using GregsStack.InputSimulatorStandard.Native;
 using Microsoft.Extensions.Configuration;
@@ -33,7 +34,16 @@ namespace TheCloser
 
         private static readonly string LogPath = Path.Combine(Path.GetTempPath(), "TheCloser.txt");
 
-        public static void Main()
+        public static void Main(string[] args)
+        {
+            var arg = args.SingleOrDefault()?.ToLowerInvariant();
+            if (arg == "-e" || arg == "--execute")
+            {
+                Execute();
+            }
+        }
+
+        private static void Execute()
         {
             var targetHandle = NativeMethods.WindowFromPoint(NativeMethods.GetMouseCursorPosition());
             var targetProcess = Process.GetProcessById(NativeMethods.GetProcessIdFromWindowHandle(targetHandle));
