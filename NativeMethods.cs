@@ -17,15 +17,13 @@ namespace TheCloser
 
         public static Point GetMouseCursorPosition()
         {
-            POINT lpPoint;
-            GetCursorPos(out lpPoint);
+            GetCursorPos(out var lpPoint);
             return lpPoint;
         }
 
         public static int GetProcessIdFromWindowHandle(IntPtr hWnd)
         {
-            uint lpdwProcessId;
-            GetWindowThreadProcessId(hWnd, out lpdwProcessId);
+            GetWindowThreadProcessId(hWnd, out var lpdwProcessId);
             return (int)lpdwProcessId;
         }
 
