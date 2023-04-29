@@ -34,7 +34,7 @@ public static class Program
     public static void Main()
     {
         using var guard = SingleInstanceGuard.Create();
-        
+
         if (guard == null)
         {
             return;
@@ -60,33 +60,29 @@ public static class Program
 
     private static void TrySendKeyPress(IntPtr handle, VirtualKeyCode keyCode, params VirtualKeyCode[] modifierKeyCodes)
     {
-        var (success, error) = TrySetForegroundWindow(handle);
-
-        if (!success)
+        if (TrySetForegroundWindow(handle))
         {
-            Log($"Window activation failed (error code: {error})");
-            return;
-        }
-
-        if (modifierKeyCodes.Any())
-        {
-            InputSimulator.Keyboard.ModifiedKeyStroke(modifierKeyCodes, keyCode);
-        }
-        else
-        {
-            InputSimulator.Keyboard.KeyPress(keyCode);
+            if (modifierKeyCodes.Any())
+            {
+                InputSimulator.Keyboard.ModifiedKeyStroke(modifierKeyCodes, keyCode);
+            }
+            else
+            {
+                InputSimulator.Keyboard.KeyPress(keyCode);
+            }
         }
     }
 
-    private static (bool success, int error) TrySetForegroundWindow(IntPtr windowHandle)
+    private static bool TrySetForegroundWindow(IntPtr windowHandle)
     {
         var success = NativeMethods.GetForegroundWindow() == windowHandle ||
-                      NativeMethods.SetForegroundWindow(windowHandle);
+                      NativeMethods.SetForegroundWindow(NativeMethods.GetRootWindow(windowHandle));
 
-        var error = success
-            ? 0
-            : Marshal.GetLastWin32Error();
+        if (!success)
+        {
+            Log($"Window activation failed (error code: {Marshal.GetLastWin32Error()})");
+        }
 
-        return (success, error);
+        return success;
     }
 }
