@@ -11,7 +11,7 @@ public static class Program
     private const string DefaultKillMethod = "CTRL-W";
 
     private static readonly IConfigurationRoot Config = new ConfigurationBuilder()
-        .SetBasePath(Path.GetDirectoryName(Process.GetCurrentProcess().MainModule!.FileName))
+        .SetBasePath(Path.GetDirectoryName(Environment.ProcessPath))
         .AddJsonFile("appsettings.json", true)
         .Build();
 
@@ -50,11 +50,9 @@ public static class Program
         killAction?.Invoke(targetHandle);
     }
 
-    private static Action<IntPtr>? GetKillAction(string killMethod) =>
-        KillActions.TryGetValue(killMethod, out var killAction) ? killAction : null;
+    private static Action<IntPtr>? GetKillAction(string killMethod) => KillActions.TryGetValue(killMethod, out var killAction) ? killAction : null;
 
-    private static string GetKillMethod(Process process) =>
-        Config[process.ProcessName]?.ToUpperInvariant() ?? DefaultKillMethod;
+    private static string GetKillMethod(Process process) => Config[process.ProcessName]?.ToUpperInvariant() ?? DefaultKillMethod;
 
     private static void Log(string msg) => File.AppendAllText(LogPath, msg + Environment.NewLine);
 
