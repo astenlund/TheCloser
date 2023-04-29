@@ -5,7 +5,7 @@ using System.Runtime.InteropServices;
 namespace TheCloser;
 
 [SuppressMessage("ReSharper", "InconsistentNaming")]
-public static class NativeMethods
+internal static class NativeMethods
 {
     public enum WindowNotification : uint
     {
