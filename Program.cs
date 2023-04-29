@@ -32,6 +32,13 @@ public static class Program
 
     public static void Main()
     {
+        using var guard = SingleInstanceGuard.Create();
+        
+        if (guard == null)
+        {
+            return;
+        }
+
         var targetHandle = NativeMethods.WindowFromPoint(NativeMethods.GetMouseCursorPosition());
         var targetProcess = Process.GetProcessById(NativeMethods.GetProcessIdFromWindowHandle(targetHandle));
         var killMethod = GetKillMethod(targetProcess);
