@@ -10,6 +10,7 @@
         <LangVersion>default</LangVersion>
         <Nullable>enable</Nullable>
         <StartupObject>TheCloser.Program</StartupObject>
+        <ImplicitUsings>enable</ImplicitUsings>
     </PropertyGroup>
 
     <ItemGroup>
