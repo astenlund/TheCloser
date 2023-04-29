@@ -2,13 +2,14 @@
 
     <PropertyGroup>
         <OutputType>WinExe</OutputType>
-        <TargetFramework>net7.0</TargetFramework>
+        <TargetFramework>net7.0-windows</TargetFramework>
         <PublishTrimmed>true</PublishTrimmed>
         <PublishReadyToRun>true</PublishReadyToRun>
         <PublishSingleFile>true</PublishSingleFile>
         <RuntimeIdentifier>win-x64</RuntimeIdentifier>
         <LangVersion>default</LangVersion>
         <Nullable>enable</Nullable>
+        <StartupObject>TheCloser.Program</StartupObject>
     </PropertyGroup>
 
     <ItemGroup>
