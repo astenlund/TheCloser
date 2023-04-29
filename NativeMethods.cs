@@ -7,6 +7,8 @@ namespace TheCloser;
 [SuppressMessage("ReSharper", "InconsistentNaming")]
 internal static class NativeMethods
 {
+    public const uint GA_ROOT = 2;
+
     public enum WindowNotification : uint
     {
         WM_DESTROY = 0x0002,
@@ -30,6 +32,14 @@ internal static class NativeMethods
     {
         PostMessage(hWnd, (uint)message, IntPtr.Zero, IntPtr.Zero);
     }
+
+    public static IntPtr GetRootWindow(IntPtr hWnd)
+    {
+        return GetAncestor(hWnd, GA_ROOT);
+    }
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern IntPtr GetAncestor(IntPtr hWnd, uint gaFlags);
 
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -90,7 +100,7 @@ internal static class NativeMethods
     ///     function.
     ///     </para>
     /// </remarks>
-    // For Windows Mobile, replace user32.dll with coredll.dll 
+    // For Windows Mobile, replace user32.dll with coredll.dll
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool SetForegroundWindow(IntPtr hWnd);
