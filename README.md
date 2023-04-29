@@ -9,12 +9,13 @@ This is a utility that, when executed, closes the window or tab currently under 
 - Windows Message: WM_QUIT
 - Keyboard: ESCAPE
 - Keyboard: ALT-F4
-- Keyboard: CTRL-W
 - Keyboard: CTRL-F4
+- Keyboard: CTRL-W
+- Keyboard: CTRL-SHIFT-W
 
 ## Example appsettings.json
 
-```javascript
+```json
 {
     "Calculator": "WM_CLOSE",
     "devenv": "CTRL-F4",
