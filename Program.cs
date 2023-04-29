@@ -19,13 +19,14 @@ public static class Program
 
     private static readonly Dictionary<string, Action<IntPtr>> KillActions = new()
     {
-        { "WM_DESTROY", handle => NativeMethods.PostMessage(handle, NativeMethods.WindowNotification.WM_DESTROY) },
-        { "WM_CLOSE", handle => NativeMethods.PostMessage(handle, NativeMethods.WindowNotification.WM_CLOSE) },
-        { "WM_QUIT", handle => NativeMethods.PostMessage(handle, NativeMethods.WindowNotification.WM_QUIT) },
-        { "ESCAPE", handle => TrySendKeyPress(handle, VirtualKeyCode.ESCAPE) },
         { "ALT-F4", handle => TrySendKeyPress(handle, VirtualKeyCode.F4, VirtualKeyCode.LMENU) },
+        { "CTRL-F4", handle => TrySendKeyPress(handle, VirtualKeyCode.F4, VirtualKeyCode.CONTROL) },
+        { "CTRL-SHIFT-W", handle => TrySendKeyPress(handle, VirtualKeyCode.VK_W, VirtualKeyCode.CONTROL, VirtualKeyCode.SHIFT) },
         { "CTRL-W", handle => TrySendKeyPress(handle, VirtualKeyCode.VK_W, VirtualKeyCode.CONTROL) },
-        { "CTRL-F4", handle => TrySendKeyPress(handle, VirtualKeyCode.F4, VirtualKeyCode.CONTROL) }
+        { "ESCAPE", handle => TrySendKeyPress(handle, VirtualKeyCode.ESCAPE) },
+        { "WM_CLOSE", handle => NativeMethods.PostMessage(handle, NativeMethods.WindowNotification.WM_CLOSE) },
+        { "WM_DESTROY", handle => NativeMethods.PostMessage(handle, NativeMethods.WindowNotification.WM_DESTROY) },
+        { "WM_QUIT", handle => NativeMethods.PostMessage(handle, NativeMethods.WindowNotification.WM_QUIT) }
     };
 
     private static readonly string LogPath = Path.Combine(Path.GetTempPath(), "TheCloser.txt");
@@ -57,7 +58,7 @@ public static class Program
 
     private static void Log(string msg) => File.AppendAllText(LogPath, msg + Environment.NewLine);
 
-    private static void TrySendKeyPress(IntPtr handle, VirtualKeyCode keyCode, VirtualKeyCode modifierKeyCode = default)
+    private static void TrySendKeyPress(IntPtr handle, VirtualKeyCode keyCode, params VirtualKeyCode[] modifierKeyCodes)
     {
         var (success, error) = TrySetForegroundWindow(handle);
 
@@ -67,9 +68,9 @@ public static class Program
             return;
         }
 
-        if (modifierKeyCode != default)
+        if (modifierKeyCodes.Any())
         {
-            InputSimulator.Keyboard.ModifiedKeyStroke(modifierKeyCode, keyCode);
+            InputSimulator.Keyboard.ModifiedKeyStroke(modifierKeyCodes, keyCode);
         }
         else
         {
