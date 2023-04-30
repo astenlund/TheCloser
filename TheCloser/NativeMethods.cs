@@ -7,7 +7,7 @@ namespace TheCloser;
 [SuppressMessage("ReSharper", "InconsistentNaming")]
 internal static class NativeMethods
 {
-    public const uint GA_ROOT = 2;
+    private const uint GA_ROOT = 2;
 
     public enum WindowNotification : uint
     {

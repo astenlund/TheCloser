@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <OutputType>WinExe</OutputType>
+        <PublishReadyToRun>true</PublishReadyToRun>
+        <PublishSingleFile>true</PublishSingleFile>
+        <PublishTrimmed>false</PublishTrimmed>
+        <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+        <StartupObject>TheCloser.Daemon.Program</StartupObject>
+        <TargetFramework>net7.0-windows</TargetFramework>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\TheCloser.Shared\TheCloser.Shared.csproj"/>
+    </ItemGroup>
+
+</Project>
