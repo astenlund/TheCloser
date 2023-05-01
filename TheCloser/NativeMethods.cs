@@ -7,7 +7,9 @@ namespace TheCloser;
 [SuppressMessage("ReSharper", "InconsistentNaming")]
 internal static class NativeMethods
 {
-    private const uint GA_ROOT = 2;
+    public const uint WM_SYSCOMMAND = 0x0112;
+    public const int SC_RESTORE = 0xF120;
+    public const uint GA_ROOT = 2;
 
     public enum WindowNotification : uint
     {
@@ -24,7 +26,7 @@ internal static class NativeMethods
 
     public static int GetProcessIdFromWindowHandle(IntPtr hWnd)
     {
-        GetWindowThreadProcessId(hWnd, out var lpdwProcessId);
+        _ = GetWindowThreadProcessId(hWnd, out var lpdwProcessId);
         return (int)lpdwProcessId;
     }
 
@@ -37,6 +39,32 @@ internal static class NativeMethods
     {
         return GetAncestor(hWnd, GA_ROOT);
     }
+
+    public static bool AttachThreadInput(IntPtr hWnd)
+    {
+        var currentThreadId = GetCurrentThreadId();
+        var targetThreadId = GetWindowThreadProcessId(hWnd, out _);
+
+        return AttachThreadInput(currentThreadId, targetThreadId, true);
+    }
+
+    public static bool DetachThreadInput(IntPtr hWnd)
+    {
+        var currentThreadId = GetCurrentThreadId();
+        var targetThreadId = GetWindowThreadProcessId(hWnd, out _);
+
+        return AttachThreadInput(currentThreadId, targetThreadId, false);
+    }
+
+    [return: MarshalAs(UnmanagedType.Bool)]
+    [DllImport("user32.dll")]
+    public static extern bool AllowSetForegroundWindow(int dwProcessId);
+
+    [DllImport("user32.dll", SetLastError=true)]
+    static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
+
+    [DllImport("kernel32.dll")]
+    public static extern uint GetCurrentThreadId();
 
     [DllImport("user32.dll", SetLastError = true)]
     public static extern IntPtr GetAncestor(IntPtr hWnd, uint gaFlags);
@@ -101,8 +129,8 @@ internal static class NativeMethods
     ///     </para>
     /// </remarks>
     // For Windows Mobile, replace user32.dll with coredll.dll
-    [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
+    [DllImport("user32.dll", SetLastError = true)]
     public static extern bool SetForegroundWindow(IntPtr hWnd);
 
     /// <summary>

@@ -21,7 +21,7 @@ public static class Program
     {
         if (DateTime.UtcNow - TimestampHandler.ReadTimestamp() < StartupIntervalThreshold)
         {
-            Logger.Log($"The previous instance was started less than {StartupIntervalThreshold.TotalMilliseconds}ms ago. Exiting...");
+            Logger.Log($"The previous instance was started less than {StartupIntervalThreshold.TotalMilliseconds}ms ago. Exiting...\r\n");
             return;
         }
 
