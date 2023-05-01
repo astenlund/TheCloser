@@ -1,5 +1,4 @@
 ﻿using System.Diagnostics;
-using System.Runtime.InteropServices;
 using GregsStack.InputSimulatorStandard;
 using GregsStack.InputSimulatorStandard.Native;
 using Microsoft.Extensions.Configuration;
@@ -49,34 +48,31 @@ internal class WindowCloser
         killAction?.Invoke(targetHandle);
     }
 
-    private static bool TrySetForegroundWindow(IntPtr windowHandle)
+    private static bool TrySetForegroundWindow(IntPtr targetHandle)
     {
-        if (GetForegroundWindow() == windowHandle)
+        if (GetForegroundWindow() == targetHandle)
         {
             return true;
         }
 
-        if (SetForegroundWindow(windowHandle) || GetForegroundWindow() == windowHandle)
-        {
-            return true;
-        }
+        AllowSetForegroundWindow(GetProcessIdFromWindowHandle(targetHandle));
+        AttachThreadInput(targetHandle);
 
-        Logger.Log($"Window activation failed (error code: {Marshal.GetLastWin32Error()})");
+        var success = SetForegroundWindow(targetHandle) || GetForegroundWindow() == targetHandle;
 
-        if (SetForegroundWindow(GetRootWindow(windowHandle)) || GetForegroundWindow() == windowHandle)
-        {
-            return true;
-        }
+        DetachThreadInput(targetHandle);
 
-        Logger.Log($"Root window activation failed (error code: {Marshal.GetLastWin32Error()})");
-
-        return false;
+        return success;
     }
 
-    private void TrySendKeyPress(IntPtr handle, VirtualKeyCode keyCode, params VirtualKeyCode[] modifierKeyCodes)
+    private void TrySendKeyPress(IntPtr targetHandle, VirtualKeyCode keyCode, params VirtualKeyCode[] modifierKeyCodes)
     {
-        if (TrySetForegroundWindow(handle))
+        var handles = new[] { targetHandle, GetRootWindow(targetHandle) }.Distinct();
+
+        if (handles.Any(TrySetForegroundWindow))
         {
+            Thread.Sleep(50);
+
             if (modifierKeyCodes.Any())
             {
                 _inputSimulator.Keyboard.ModifiedKeyStroke(modifierKeyCodes, keyCode);
@@ -85,6 +81,10 @@ internal class WindowCloser
             {
                 _inputSimulator.Keyboard.KeyPress(keyCode);
             }
+        }
+        else
+        {
+            Logger.Log($"Failed to set foreground window for {targetHandle}");
         }
     }
 
