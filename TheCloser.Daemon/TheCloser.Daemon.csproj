@@ -4,9 +4,7 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <OutputType>WinExe</OutputType>
-        <PublishReadyToRun>true</PublishReadyToRun>
-        <PublishSingleFile>true</PublishSingleFile>
-        <PublishTrimmed>false</PublishTrimmed>
+        <PublishAot>true</PublishAot>
         <RuntimeIdentifier>win-x64</RuntimeIdentifier>
         <StartupObject>TheCloser.Daemon.Program</StartupObject>
         <TargetFramework>net7.0-windows</TargetFramework>
