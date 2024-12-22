@@ -73,7 +73,7 @@ internal class WindowCloser
         {
             Thread.Sleep(50);
 
-            if (modifierKeyCodes.Any())
+            if (modifierKeyCodes.Length != 0)
             {
                 _inputSimulator.Keyboard.ModifiedKeyStroke(modifierKeyCodes, keyCode);
             }
@@ -90,5 +90,5 @@ internal class WindowCloser
 
     private string? GetKillMethod(Process process) => _killMethods[process.ProcessName]?.ToUpperInvariant();
 
-    private Action<IntPtr>? GetKillAction(string killMethod) => _killActions.TryGetValue(killMethod, out var killAction) ? killAction : null;
+    private Action<IntPtr>? GetKillAction(string killMethod) => _killActions.GetValueOrDefault(killMethod);
 }

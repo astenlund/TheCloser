@@ -11,7 +11,7 @@ public static class Program
     private static readonly Logger Logger = Logger.Create(AssemblyName);
 
     private static readonly IConfigurationRoot Config = new ConfigurationBuilder()
-        .SetBasePath(Path.GetDirectoryName(Environment.ProcessPath))
+        .SetBasePath(Path.GetDirectoryName(Environment.ProcessPath)!)
         .AddJsonFile("appsettings.json", true)
         .Build();
 
@@ -44,7 +44,7 @@ public static class Program
 
     private static void StartDaemon()
     {
-        if (Process.GetProcessesByName(Daemon.Program.AssemblyName).Any())
+        if (Process.GetProcessesByName(Daemon.Program.AssemblyName).Length != 0)
         {
             return;
         }
