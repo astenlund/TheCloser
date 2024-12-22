@@ -2,7 +2,7 @@ Get-Process 'TheCloser.Daemon' -ErrorAction Ignore | Stop-Process -Verbose
 
 dotnet publish --configuration 'Release'
 
-$Destination = 'C:\Sync\Bin\TheCloser\'
+$Destination = 'C:\Sync\Personal\3. Resources\Bin\TheCloser\'
 
 if (!(Test-Path $Destination)) {
     New-Item $Destination -ItemType Directory -Force
