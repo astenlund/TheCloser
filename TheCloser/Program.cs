@@ -19,6 +19,14 @@ public static class Program
 
     public static void Main()
     {
+        using var mutex = new Mutex(initiallyOwned: true, "Global\\TheCloserGuardMutex", out var createdNew);
+
+        if (!createdNew)
+        {
+            Logger.Log("The previous instance is still running. Exiting...\r\n");
+            return;
+        }
+
         if (DateTime.UtcNow - TimestampHandler.ReadTimestamp() < StartupIntervalThreshold)
         {
             Logger.Log($"The previous instance was started less than {StartupIntervalThreshold.TotalMilliseconds}ms ago. Exiting...\r\n");
