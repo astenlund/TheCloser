@@ -1,17 +1,15 @@
 <Project Sdk="Microsoft.NET.Sdk">
-
-    <PropertyGroup>
-        <ImplicitUsings>enable</ImplicitUsings>
-        <Nullable>enable</Nullable>
-        <OutputType>WinExe</OutputType>
-        <PublishAot>true</PublishAot>
-        <RuntimeIdentifier>win-x64</RuntimeIdentifier>
-        <StartupObject>TheCloser.Daemon.Program</StartupObject>
-        <TargetFramework>net7.0-windows</TargetFramework>
-    </PropertyGroup>
-
-    <ItemGroup>
-        <ProjectReference Include="..\TheCloser.Shared\TheCloser.Shared.csproj"/>
-    </ItemGroup>
-
+  <PropertyGroup>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <OutputType>WinExe</OutputType>
+    <PublishAot>true</PublishAot>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <StartupObject>TheCloser.Daemon.Program</StartupObject>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <LangVersion>default</LangVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\TheCloser.Shared\TheCloser.Shared.csproj" />
+  </ItemGroup>
 </Project>

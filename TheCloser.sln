@@ -1,13 +1,13 @@
-﻿
+
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 14
 VisualStudioVersion = 14.0.25420.1
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TheCloser", "TheCloser\TheCloser.csproj", "{A0894E80-89F0-4812-9C03-C77971CB5E1D}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "TheCloser", "TheCloser\TheCloser.csproj", "{A0894E80-89F0-4812-9C03-C77971CB5E1D}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TheCloser.Daemon", "TheCloser.Daemon\TheCloser.Daemon.csproj", "{266483FD-D542-4AEE-885F-72B279442064}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "TheCloser.Daemon", "TheCloser.Daemon\TheCloser.Daemon.csproj", "{266483FD-D542-4AEE-885F-72B279442064}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TheCloser.Shared", "TheCloser.Shared\TheCloser.Shared.csproj", "{0C93AEB6-2112-4EED-833C-BCBC38932545}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "TheCloser.Shared", "TheCloser.Shared\TheCloser.Shared.csproj", "{0C93AEB6-2112-4EED-833C-BCBC38932545}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{B8186221-0B72-4478-961D-BB351E9B837C}"
 	ProjectSection(SolutionItems) = preProject

@@ -8,5 +8,5 @@ if (!(Test-Path $Destination)) {
     New-Item $Destination -ItemType Directory -Force
 }
 
-Copy-Item '.\TheCloser\bin\Release\net7.0-windows\win-x64\publish\TheCloser.exe' $Destination -Force -Verbose
-Copy-Item '.\TheCloser.Daemon\bin\Release\net7.0-windows\win-x64\publish\TheCloser.Daemon.exe' $Destination -Force -Verbose
+Copy-Item '.\TheCloser\bin\Release\net9.0-windows\win-x64\publish\TheCloser.exe' $Destination -Force -Verbose
+Copy-Item '.\TheCloser.Daemon\bin\Release\net9.0-windows\win-x64\publish\TheCloser.Daemon.exe' $Destination -Force -Verbose
