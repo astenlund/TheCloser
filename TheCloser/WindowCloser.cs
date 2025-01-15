@@ -38,38 +38,108 @@ internal class WindowCloser
 
     public void CloseWindowUnderCursor()
     {
-        var targetHandle = WindowFromPoint(GetMouseCursorPosition());
-        var targetProcess = Process.GetProcessById(GetProcessIdFromWindowHandle(targetHandle));
+        var targetWindow = WindowFromPoint(GetMouseCursorPosition());
+        var targetProcess = Process.GetProcessById(GetProcessIdFromWindowHandle(targetWindow));
         var killMethod = GetKillMethod(targetProcess) ?? DefaultKillMethod;
         var killAction = GetKillAction(killMethod);
 
         Logger.Log($"{targetProcess.ProcessName} -> {killMethod}");
 
-        killAction?.Invoke(targetHandle);
+        killAction?.Invoke(targetWindow);
     }
 
-    private static bool TrySetForegroundWindow(IntPtr targetHandle)
+    private static bool TrySetForegroundWindow(IntPtr targetWindow)
     {
-        if (GetForegroundWindow() == targetHandle)
+        var rootWindow = GetRootWindow(targetWindow);
+
+        if (IsForeground(targetWindow, rootWindow))
         {
             return true;
         }
 
-        AllowSetForegroundWindow(GetProcessIdFromWindowHandle(targetHandle));
-        AttachThreadInput(targetHandle);
-
-        var success = SetForegroundWindow(targetHandle) || GetForegroundWindow() == targetHandle;
-
-        DetachThreadInput(targetHandle);
-
-        return success;
+        return TrySetForegroundWindowNative(targetWindow)   || IsForeground(targetWindow, rootWindow) ||
+               TrySetForegroundWindowNative(rootWindow)     || IsForeground(targetWindow, rootWindow) ||
+               TrySetForegroundWindowByClicking(rootWindow) && IsForeground(targetWindow, rootWindow);
     }
 
-    private void TrySendKeyPress(IntPtr targetHandle, VirtualKeyCode keyCode, params VirtualKeyCode[] modifierKeyCodes)
+    private static bool IsForeground(IntPtr targetWindow, IntPtr rootWindow)
     {
-        var handles = new[] { targetHandle, GetRootWindow(targetHandle) }.Distinct();
+        var foregroundWindow = GetForegroundWindow();
 
-        if (handles.Any(TrySetForegroundWindow))
+        return foregroundWindow == targetWindow ||
+               foregroundWindow == rootWindow;
+    }
+
+    private static bool TrySetForegroundWindowNative(IntPtr targetWindow)
+    {
+        try
+        {
+            AllowSetForegroundWindow(GetProcessIdFromWindowHandle(targetWindow));
+            AttachThreadInput(targetWindow);
+
+            return SetForegroundWindow(targetWindow) || GetForegroundWindow() == targetWindow;
+        }
+        finally
+        {
+            DetachThreadInput(targetWindow);
+        }
+    }
+
+    private static bool TrySetForegroundWindowByClicking(IntPtr targetWindow)
+    {
+        if (GetWindowRect(targetWindow, out var rect))
+        {
+            GetCursorPos(out var oldPos);
+
+            try
+            {
+                var width = rect.Right - rect.Left;
+                var titleBarX = rect.Left + width / 2;
+                var titleBarY = rect.Top + 2;
+
+                if (!TryMoveCursor(titleBarX, titleBarY))
+                {
+                    return false;
+                }
+
+                mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, UIntPtr.Zero);
+                mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, UIntPtr.Zero);
+
+                TryMoveCursor(oldPos.X, oldPos.Y);
+
+                return GetForegroundWindow() == targetWindow;
+            }
+            finally
+            {
+                TryMoveCursor(oldPos.X, oldPos.Y);
+            }
+        }
+
+        return false;
+    }
+
+    private static bool TryMoveCursor(int x, int y)
+    {
+        SetCursorPos(x, y);
+
+        for (var attempts = 0; attempts < 5; attempts++)
+        {
+            GetCursorPos(out var currentPos);
+
+            if (currentPos.X == x && currentPos.Y == y)
+            {
+                return true;
+            }
+
+            Thread.Sleep(10);
+        }
+
+        return false;
+    }
+
+    private void TrySendKeyPress(IntPtr targetWindow, VirtualKeyCode keyCode, params VirtualKeyCode[] modifierKeyCodes)
+    {
+        if (TrySetForegroundWindow(targetWindow))
         {
             Thread.Sleep(50);
 
@@ -84,7 +154,7 @@ internal class WindowCloser
         }
         else
         {
-            Logger.Log($"Failed to set foreground window for {targetHandle}");
+            Logger.Log($"Failed to set foreground window for {targetWindow}");
         }
     }
 
