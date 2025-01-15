@@ -7,7 +7,7 @@ namespace TheCloser;
 
 public static class Program
 {
-    private static readonly TimeSpan StartupIntervalThreshold = TimeSpan.FromMilliseconds(125);
+    private static readonly TimeSpan StartupIntervalThreshold = TimeSpan.FromMilliseconds(200);
     private static readonly Logger Logger = Logger.Create(AssemblyName);
 
     private static readonly IConfigurationRoot Config = new ConfigurationBuilder()
