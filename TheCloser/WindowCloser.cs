@@ -30,7 +30,8 @@ internal class WindowCloser
             { "ESCAPE", handle => TrySendKeyPress(handle, VirtualKeyCode.ESCAPE) },
             { "WM_CLOSE", handle => PostMessage(handle, WindowNotification.WM_CLOSE) },
             { "WM_DESTROY", handle => PostMessage(handle, WindowNotification.WM_DESTROY) },
-            { "WM_QUIT", handle => PostMessage(handle, WindowNotification.WM_QUIT) }
+            { "WM_QUIT", handle => PostMessage(handle, WindowNotification.WM_QUIT) },
+            { "SC_CLOSE", handle => PostMessage(handle, WindowNotification.WM_SYSCOMMAND, SC_CLOSE) }
         };
     }
 

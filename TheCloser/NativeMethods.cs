@@ -3,13 +3,14 @@ using System.Drawing;
 using System.Runtime.InteropServices;
 using static System.Runtime.InteropServices.CallingConvention;
 using static System.Runtime.InteropServices.CharSet;
+using static System.Runtime.InteropServices.UnmanagedType;
 
 namespace TheCloser;
 
 [SuppressMessage("ReSharper", "InconsistentNaming")]
 internal static class NativeMethods
 {
-    public const uint WM_SYSCOMMAND = 0x0112;
+    public const int SC_CLOSE = 0xF060;
     public const int SC_RESTORE = 0xF120;
     public const uint GA_ROOT = 2;
     public const uint MOUSEEVENTF_LEFTDOWN = 0x0002;
@@ -19,7 +20,8 @@ internal static class NativeMethods
     {
         WM_DESTROY = 0x0002,
         WM_CLOSE = 0x0010,
-        WM_QUIT = 0x0012
+        WM_QUIT = 0x0012,
+        WM_SYSCOMMAND = 0x0112
     }
 
     public static Point GetMouseCursorPosition()
@@ -34,9 +36,11 @@ internal static class NativeMethods
         return (int)lpdwProcessId;
     }
 
-    public static void PostMessage(IntPtr hWnd, WindowNotification message)
+    public static void PostMessage(IntPtr hWnd, WindowNotification message, uint? param = null)
     {
-        PostMessage(hWnd, (uint)message, IntPtr.Zero, IntPtr.Zero);
+        var wParam = param != null ? new IntPtr(param.Value) : IntPtr.Zero;
+
+        PostMessage(hWnd, message, wParam, IntPtr.Zero);
     }
 
     public static IntPtr GetRootWindow(IntPtr hWnd)
@@ -60,7 +64,7 @@ internal static class NativeMethods
         return AttachThreadInput(currentThreadId, targetThreadId, false);
     }
 
-    [return: MarshalAs(UnmanagedType.Bool)]
+    [return: MarshalAs(Bool)]
     [DllImport("user32.dll")]
     public static extern bool AllowSetForegroundWindow(int dwProcessId);
 
@@ -74,11 +78,11 @@ internal static class NativeMethods
     public static extern IntPtr GetAncestor(IntPtr hWnd, uint gaFlags);
 
     [DllImport("user32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
+    [return: MarshalAs(Bool)]
     public static extern bool GetCursorPos(out POINT lpPoint);
     
     [DllImport("user32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
+    [return: MarshalAs(Bool)]
     public static extern bool SetCursorPos(int X, int Y);
     
     [DllImport("user32.dll", CharSet = Auto, CallingConvention = StdCall)]
@@ -94,15 +98,15 @@ internal static class NativeMethods
     public static extern IntPtr WindowFromPoint(Point p);
 
     [DllImport("user32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
+    [return: MarshalAs(Bool)]
     public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
 
     [DllImport("user32.dll", SetLastError = true)]
     public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
 
-    [return: MarshalAs(UnmanagedType.Bool)]
+    [return: MarshalAs(Bool)]
     [DllImport("user32.dll", CharSet = Auto, SetLastError = true)]
-    public static extern bool PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+    public static extern bool PostMessage(IntPtr hWnd, [MarshalAs(U4)] WindowNotification Msg, IntPtr wParam, IntPtr lParam);
 
     /// <summary>
     ///     Brings the thread that created the specified window into the foreground and activates the window. Keyboard input is
@@ -150,7 +154,7 @@ internal static class NativeMethods
     ///     </para>
     /// </remarks>
     // For Windows Mobile, replace user32.dll with coredll.dll
-    [return: MarshalAs(UnmanagedType.Bool)]
+    [return: MarshalAs(Bool)]
     [DllImport("user32.dll", SetLastError = true)]
     public static extern bool SetForegroundWindow(IntPtr hWnd);
 
