@@ -23,12 +23,14 @@ public static class Program
 
         if (!createdNew)
         {
+            Logger.Log($"Timestamp: {DateTime.UtcNow:O}");
             Logger.Log("The previous instance is still running. Exiting...\r\n");
             return;
         }
 
         if (DateTime.UtcNow - TimestampHandler.ReadTimestamp() < StartupIntervalThreshold)
         {
+            Logger.Log($"Timestamp: {DateTime.UtcNow:O}");
             Logger.Log($"The previous instance was started less than {StartupIntervalThreshold.TotalMilliseconds}ms ago. Exiting...\r\n");
             return;
         }
