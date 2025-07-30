@@ -91,35 +91,44 @@ internal class WindowCloser
 
     private static bool TrySetForegroundWindowByClicking(IntPtr targetWindow)
     {
-        if (GetWindowRect(targetWindow, out var rect))
+        if (!GetWindowRect(targetWindow, out var rect))
         {
-            GetCursorPos(out var oldPos);
-
-            try
-            {
-                var width = rect.Right - rect.Left;
-                var titleBarX = rect.Left + width / 2;
-                var titleBarY = rect.Top + 2;
-
-                if (!TryMoveCursor(titleBarX, titleBarY))
-                {
-                    return false;
-                }
-
-                mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, UIntPtr.Zero);
-                mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, UIntPtr.Zero);
-
-                TryMoveCursor(oldPos.X, oldPos.Y);
-
-                return GetForegroundWindow() == targetWindow;
-            }
-            finally
-            {
-                TryMoveCursor(oldPos.X, oldPos.Y);
-            }
+            return false;
         }
 
-        return false;
+        GetCursorPos(out var oldPos);
+
+        try
+        {
+            // Single click at top-left corner
+            var clickX = rect.Left + 10;
+            var clickY = rect.Top + 10;
+
+            if (!TryMoveCursor(clickX, clickY))
+            {
+                return false;
+            }
+
+            var inputs = new INPUT[2];
+            
+            // Mouse down
+            inputs[0].type = INPUT_MOUSE;
+            inputs[0].U.mi.dwFlags = MOUSEEVENTF_LEFTDOWN;
+            
+            // Mouse up
+            inputs[1].type = INPUT_MOUSE;
+            inputs[1].U.mi.dwFlags = MOUSEEVENTF_LEFTUP;
+            
+            var result = SendInput(2, inputs, INPUT.Size);
+            
+            Thread.Sleep(50);
+            
+            return result == 2 && GetForegroundWindow() == targetWindow;
+        }
+        finally
+        {
+            TryMoveCursor(oldPos.X, oldPos.Y);
+        }
     }
 
     private static bool TryMoveCursor(int x, int y)
