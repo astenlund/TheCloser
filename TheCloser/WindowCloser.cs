@@ -73,8 +73,17 @@ internal class WindowCloser
 
     private static bool TrySetForegroundWindowNative(IntPtr targetWindow)
     {
+        uint originalTimeout = 0;
+        var timeoutDisabled = false;
+        
         try
         {
+            if (SystemParametersInfo(SPI_GETFOREGROUNDLOCKTIMEOUT, 0, ref originalTimeout, 0))
+            {
+                SystemParametersInfo(SPI_SETFOREGROUNDLOCKTIMEOUT, 0, IntPtr.Zero, SPIF_SENDCHANGE);
+                timeoutDisabled = true;
+            }
+            
             AllowSetForegroundWindow(GetProcessIdFromWindowHandle(targetWindow));
             AttachThreadInput(targetWindow);
             SetForegroundWindow(targetWindow);
@@ -87,6 +96,11 @@ internal class WindowCloser
         finally
         {
             DetachThreadInput(targetWindow);
+            
+            if (timeoutDisabled)
+            {
+                SystemParametersInfo(SPI_SETFOREGROUNDLOCKTIMEOUT, originalTimeout, IntPtr.Zero, SPIF_SENDCHANGE);
+            }
         }
     }
 
