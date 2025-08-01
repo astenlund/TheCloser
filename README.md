@@ -4,34 +4,35 @@ This is a utility that, when executed, closes the window or tab currently under 
 
 ## Supported methods
 
-- Windows Message: WM_DESTROY
-- Windows Message: WM_CLOSE
-- Windows Message: WM_QUIT
 - Keyboard: ESCAPE
 - Keyboard: ALT-F4
 - Keyboard: CTRL-F4
 - Keyboard: CTRL-W
 - Keyboard: CTRL-SHIFT-W
+- System Command: SC_CLOSE
+- Windows Message: WM_DESTROY
+- Windows Message: WM_CLOSE
+- Windows Message: WM_QUIT
 
-## Example appsettings.json
+## Configuration
+
+Applications can be configured with either a simple method string or an object with method and click position settings.
+
+### Example appsettings.json
 
 ```json
 {
-    "Calculator": "WM_CLOSE",
     "devenv": "CTRL-F4",
-    "MicrosoftEdge": "CTRL-W",
-    "mpc-hc64": "ALT-F4",
     "notepad": "WM_QUIT",
-    "nwc2": "CTRL-F4",
-    "pageant": "ESCAPE",
-    "PicasaPhotoViewer": "WM_CLOSE",
-    "PicoViewer": "WM_CLOSE",
-    "Rambox": "WM_CLOSE",
-    "Resilio Sync": "ALT-F4",
-    "rider64": "CTRL-F4",
-    "SystemSettings": "WM_CLOSE",
-    "TARGETGUI": "WM_CLOSE",
-    "TeamViewer": "CTRL-F4",
-    "WinStore.App": "WM_CLOSE"
+    "sublime_merge": {
+        "Method": "CTRL-W",
+        "ClickPosition": "Center"
+    }
 }
 ```
+
+### Click Position Options
+
+When using keyboard methods that require window activation, you can specify where to click on the title bar:
+- `Left` (default): Click on the left side of the title bar
+- `Center`: Click in the center of the title bar
