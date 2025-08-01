@@ -77,8 +77,11 @@ internal class WindowCloser
         {
             AllowSetForegroundWindow(GetProcessIdFromWindowHandle(targetWindow));
             AttachThreadInput(targetWindow);
+            SetForegroundWindow(targetWindow);
 
-            return SetForegroundWindow(targetWindow) || GetForegroundWindow() == targetWindow;
+            Thread.Sleep(50);
+            
+            return GetForegroundWindow() == targetWindow;
         }
         finally
         {
