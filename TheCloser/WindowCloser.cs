@@ -3,35 +3,38 @@ using GregsStack.InputSimulatorStandard;
 using GregsStack.InputSimulatorStandard.Native;
 using Microsoft.Extensions.Configuration;
 using TheCloser.Shared;
+
 using static TheCloser.NativeMethods;
+using static TheCloser.TitleBarClickPosition;
 
 namespace TheCloser;
 
 internal class WindowCloser
 {
     private const string DefaultKillMethod = "CTRL-W";
+    private const TitleBarClickPosition DefaultClickPosition = Left;
 
     private static readonly Logger Logger = Logger.Create(Program.AssemblyName);
 
-    private readonly IConfiguration _killMethods;
+    private readonly IConfiguration _config;
     private readonly InputSimulator _inputSimulator;
-    private readonly Dictionary<string, Action<IntPtr>> _killActions;
+    private readonly Dictionary<string, Action<IntPtr, TitleBarClickPosition>> _killActions;
 
-    private WindowCloser(IConfiguration killMethods)
+    private WindowCloser(IConfiguration config)
     {
-        _killMethods = killMethods;
+        _config = config;
         _inputSimulator = new InputSimulator();
-        _killActions = new Dictionary<string, Action<IntPtr>>
+        _killActions = new Dictionary<string, Action<IntPtr, TitleBarClickPosition>>
         {
-            { "ALT-F4", handle => TrySendKeyPress(handle, VirtualKeyCode.F4, VirtualKeyCode.LMENU) },
-            { "CTRL-F4", handle => TrySendKeyPress(handle, VirtualKeyCode.F4, VirtualKeyCode.CONTROL) },
-            { "CTRL-SHIFT-W", handle => TrySendKeyPress(handle, VirtualKeyCode.VK_W, VirtualKeyCode.CONTROL, VirtualKeyCode.SHIFT) },
-            { "CTRL-W", handle => TrySendKeyPress(handle, VirtualKeyCode.VK_W, VirtualKeyCode.CONTROL) },
-            { "ESCAPE", handle => TrySendKeyPress(handle, VirtualKeyCode.ESCAPE) },
-            { "WM_CLOSE", handle => PostMessage(handle, WindowNotification.WM_CLOSE) },
-            { "WM_DESTROY", handle => PostMessage(handle, WindowNotification.WM_DESTROY) },
-            { "WM_QUIT", handle => PostMessage(handle, WindowNotification.WM_QUIT) },
-            { "SC_CLOSE", handle => PostMessage(handle, WindowNotification.WM_SYSCOMMAND, SC_CLOSE) }
+            { "ALT-F4", (handle, clickPos) => TrySendKeyPress(handle, clickPos, VirtualKeyCode.F4, VirtualKeyCode.LMENU) },
+            { "CTRL-F4", (handle, clickPos) => TrySendKeyPress(handle, clickPos, VirtualKeyCode.F4, VirtualKeyCode.CONTROL) },
+            { "CTRL-SHIFT-W", (handle, clickPos) => TrySendKeyPress(handle, clickPos, VirtualKeyCode.VK_W, VirtualKeyCode.CONTROL, VirtualKeyCode.SHIFT) },
+            { "CTRL-W", (handle, clickPos) => TrySendKeyPress(handle, clickPos, VirtualKeyCode.VK_W, VirtualKeyCode.CONTROL) },
+            { "ESCAPE", (handle, clickPos) => TrySendKeyPress(handle, clickPos, VirtualKeyCode.ESCAPE) },
+            { "WM_CLOSE", (handle, _) => PostMessage(handle, WindowNotification.WM_CLOSE) },
+            { "WM_DESTROY", (handle, _) => PostMessage(handle, WindowNotification.WM_DESTROY) },
+            { "WM_QUIT", (handle, _) => PostMessage(handle, WindowNotification.WM_QUIT) },
+            { "SC_CLOSE", (handle, _) => PostMessage(handle, WindowNotification.WM_SYSCOMMAND, SC_CLOSE) }
         };
     }
 
@@ -41,30 +44,28 @@ internal class WindowCloser
     {
         var targetWindow = WindowFromPoint(GetMouseCursorPosition());
         var targetProcess = Process.GetProcessById(GetProcessIdFromWindowHandle(targetWindow));
-        var killMethod = GetKillMethod(targetProcess) ?? DefaultKillMethod;
-        var killAction = GetKillAction(killMethod);
+        var settings = GetProcessSettings(targetProcess);
+        var killMethod = settings.Method ?? DefaultKillMethod;
+        var killAction = GetKillAction(killMethod) ?? _killActions[DefaultKillMethod];
 
         Logger.Log($"{targetProcess.ProcessName} -> {killMethod}");
 
-        killAction?.Invoke(targetWindow);
+        killAction.Invoke(targetWindow, settings.ClickPosition ?? DefaultClickPosition);
     }
 
-    private static bool TrySetForegroundWindow(IntPtr targetWindow)
+    private static bool TrySetForegroundWindow(IntPtr targetWindow, TitleBarClickPosition clickPosition)
     {
         var rootWindow = GetRootWindow(targetWindow);
 
-        if (IsForeground(targetWindow, rootWindow))
-        {
-            return true;
-        }
-
-        return TrySetForegroundWindowNative(targetWindow)   || IsForeground(targetWindow, rootWindow) ||
-               TrySetForegroundWindowNative(rootWindow)     || IsForeground(targetWindow, rootWindow) ||
-               TrySetForegroundWindowByClicking(rootWindow) && IsForeground(targetWindow, rootWindow);
+        return IsForeground(targetWindow) ||
+               TrySetForegroundWindowNative(targetWindow) ||
+               TrySetForegroundWindowNative(rootWindow) ||
+               TrySetForegroundWindowByClicking(rootWindow, clickPosition);
     }
 
-    private static bool IsForeground(IntPtr targetWindow, IntPtr rootWindow)
+    private static bool IsForeground(IntPtr targetWindow)
     {
+        var rootWindow = GetRootWindow(targetWindow);
         var foregroundWindow = GetForegroundWindow();
 
         return foregroundWindow == targetWindow ||
@@ -90,8 +91,8 @@ internal class WindowCloser
             SwitchToThisWindow(targetWindow, false);
 
             Thread.Sleep(50);
-            
-            return GetForegroundWindow() == targetWindow;
+
+            return IsForeground(targetWindow);
         }
         finally
         {
@@ -104,7 +105,7 @@ internal class WindowCloser
         }
     }
 
-    private static bool TrySetForegroundWindowByClicking(IntPtr targetWindow)
+    private static bool TrySetForegroundWindowByClicking(IntPtr targetWindow, TitleBarClickPosition clickPosition)
     {
         if (!GetWindowRect(targetWindow, out var rect))
         {
@@ -115,9 +116,13 @@ internal class WindowCloser
 
         try
         {
-            // Single click at top-left corner
-            var clickX = rect.Left + 10;
-            var clickY = rect.Top + 10;
+            var clickY = rect.Top + 20;
+            var clickX = clickPosition switch
+            {
+                Left => rect.Left + 10,
+                Center => rect.Left + (rect.Right - rect.Left) / 2,
+                _ => throw new ArgumentOutOfRangeException(nameof(clickPosition), clickPosition, null)
+            };
 
             if (!TryMoveCursor(clickX, clickY))
             {
@@ -134,11 +139,11 @@ internal class WindowCloser
             inputs[1].type = INPUT_MOUSE;
             inputs[1].U.mi.dwFlags = MOUSEEVENTF_LEFTUP;
             
-            var result = SendInput(2, inputs, INPUT.Size);
+            _ = SendInput(2, inputs, INPUT.Size);
             
             Thread.Sleep(50);
-            
-            return result == 2 && GetForegroundWindow() == targetWindow;
+
+            return IsForeground(targetWindow);
         }
         finally
         {
@@ -165,9 +170,9 @@ internal class WindowCloser
         return false;
     }
 
-    private void TrySendKeyPress(IntPtr targetWindow, VirtualKeyCode keyCode, params VirtualKeyCode[] modifierKeyCodes)
+    private void TrySendKeyPress(IntPtr targetWindow, TitleBarClickPosition clickPosition, VirtualKeyCode keyCode, params VirtualKeyCode[] modifierKeyCodes)
     {
-        if (TrySetForegroundWindow(targetWindow))
+        if (TrySetForegroundWindow(targetWindow, clickPosition))
         {
             Thread.Sleep(50);
 
@@ -186,7 +191,28 @@ internal class WindowCloser
         }
     }
 
-    private string? GetKillMethod(Process process) => _killMethods[process.ProcessName]?.ToUpperInvariant();
+    private ProcessSettings GetProcessSettings(Process process)
+    {
+        var section = _config.GetSection(process.ProcessName);
+        
+        // Check if it's a simple string
+        var simpleValue = section.Value;
+        if (!string.IsNullOrEmpty(simpleValue))
+        {
+            return new ProcessSettings { Method = simpleValue.ToUpperInvariant() };
+        }
+        
+        // Otherwise, read values from sections
+        var settings = new ProcessSettings
+        {
+            Method = section["Method"]?.ToUpperInvariant(),
+            ClickPosition = Enum.TryParse<TitleBarClickPosition>(section["ClickPosition"], out var clickPos) 
+                ? clickPos 
+                : Left
+        };
+        
+        return settings;
+    }
 
-    private Action<IntPtr>? GetKillAction(string killMethod) => _killActions.GetValueOrDefault(killMethod);
+    private Action<IntPtr, TitleBarClickPosition>? GetKillAction(string killMethod) => _killActions.GetValueOrDefault(killMethod);
 }
