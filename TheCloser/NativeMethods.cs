@@ -229,15 +229,6 @@ internal static class NativeMethods
     [DllImport("user32.dll")]
     public static extern IntPtr GetForegroundWindow();
     
-    /// <summary>
-    ///     Switches focus to the specified window and brings it to the foreground.
-    ///     This is an undocumented function that is more forceful than SetForegroundWindow.
-    /// </summary>
-    /// <param name="hWnd">Handle to the window to switch to</param>
-    /// <param name="fAltTab">If true, uses Alt-Tab ordering; if false, activates immediately</param>
-    [DllImport("user32.dll")]
-    public static extern void SwitchToThisWindow(IntPtr hWnd, bool fAltTab);
-    
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(Bool)]
     public static extern bool SystemParametersInfo(uint uiAction, uint uiParam, ref uint pvParam, uint fWinIni);
