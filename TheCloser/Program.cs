@@ -48,7 +48,7 @@ public static class Program
                 return;
             }
 
-            if (StartDaemon())
+            if (TryEnsureDaemonProcess())
             {
                 WaitForDaemonPin();
             }
@@ -70,11 +70,11 @@ public static class Program
         .AddJsonFile("appsettings.json", optional: true)
         .Build();
 
-    private static bool StartDaemon()
+    private static bool TryEnsureDaemonProcess()
     {
-        if (Process.GetProcessesByName(DaemonAssemblyName).Length != 0)
+        if (DaemonProcessExists())
         {
-            return false;
+            return true;
         }
 
         var daemonExePath = Path.Combine(ExeDirectory, $"{DaemonAssemblyName}.exe");
@@ -94,9 +94,21 @@ public static class Program
             CreateNoWindow = true
         };
 
-        Process.Start(startInfo);
+        using var daemonProcess = Process.Start(startInfo);
 
         return true;
+    }
+
+    private static bool DaemonProcessExists()
+    {
+        var daemonProcesses = Process.GetProcessesByName(DaemonAssemblyName);
+
+        foreach (var daemonProcess in daemonProcesses)
+        {
+            daemonProcess.Dispose();
+        }
+
+        return daemonProcesses.Length != 0;
     }
 
     private static void WaitForDaemonPin()
