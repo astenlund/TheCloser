@@ -2,6 +2,10 @@
 
 This is a utility that, when executed, closes the window or tab currently under the mouse cursor, even if the window is not active (i.e. does not have focus). Multiple methods of closing a window are supported and can be configured per application via the appsettings.json file. The default behavior is CTRL-W.
 
+## How it works
+
+Invoking the executable closes the window or tab under the cursor and exits. A small background daemon (`TheCloser.Daemon.exe`, auto-started on first invocation) keeps shared state alive between invocations: a 200ms throttle that absorbs accidental double-triggers, and a crash-repair record that restores the system foreground lock timeout if the app is killed mid-operation. The daemon can be stopped with `TheCloser.Daemon.exe --stop`.
+
 ## Supported methods
 
 - Keyboard: ESCAPE
@@ -10,9 +14,9 @@ This is a utility that, when executed, closes the window or tab currently under 
 - Keyboard: CTRL-W
 - Keyboard: CTRL-SHIFT-W
 - System Command: SC_CLOSE
-- Windows Message: WM_DESTROY
+- Windows Message: WM_DESTROY (hazardous: posting WM_DESTROY cross-process makes the target run its destruction cleanup while the window handle stays alive; prefer WM_CLOSE or SC_CLOSE)
 - Windows Message: WM_CLOSE
-- Windows Message: WM_QUIT
+- Windows Message: WM_QUIT (hazardous: kills the target's message loop, bypassing any save/confirm-on-close handling)
 
 ## Configuration
 
@@ -23,7 +27,7 @@ Applications can be configured with either a simple method string or an object w
 ```json
 {
     "devenv": "CTRL-F4",
-    "notepad": "WM_QUIT",
+    "notepad": "WM_CLOSE",
     "sublime_merge": {
         "Method": "CTRL-W",
         "ClickPosition": "Center"
