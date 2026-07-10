@@ -16,6 +16,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\TheCloser\TheCloser.csproj" />
+    <ProjectReference Include="..\TheCloser.Daemon\TheCloser.Daemon.csproj" />
     <ProjectReference Include="..\TheCloser.Shared\TheCloser.Shared.csproj" />
   </ItemGroup>
 

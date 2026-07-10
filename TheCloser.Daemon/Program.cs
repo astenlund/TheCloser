@@ -4,7 +4,7 @@ using static TheCloser.Shared.Constants;
 
 namespace TheCloser.Daemon;
 
-public class Program
+public static class Program
 {
     private static readonly TimeSpan WatchdogInterval = TimeSpan.FromSeconds(5);
     private static readonly Logger Logger = new(DaemonAssemblyName);
@@ -71,19 +71,50 @@ public class Program
 
     private static void RepairIfCrashed(SharedState sharedState)
     {
-        if (!sharedState.TryReadTimeoutRepair(out var savedTimeout))
+        if (TryRepairCrashedState(sharedState, GuardMutexName, Logger))
         {
-            return;
+            Logger.Log("Restored the foreground lock timeout after a detected app crash.");
+        }
+    }
+
+    // The guard mutex must be ACQUIRED (createdNew), not merely probed: a probe result goes stale
+    // before the repair runs, letting the daemon erase a record a freshly started app just published.
+    // Pending is checked before acquisition so idle ticks never contend with app startups, and
+    // re-checked after, because the app may have healed the record between the pending check and the successful creation.
+    internal static bool TryRepairCrashedState(SharedState sharedState, string guardMutexName, Logger logger, Func<uint, bool>? restore = null)
+    {
+        if (!sharedState.TryReadTimeoutRepair(out _))
+        {
+            return false;
         }
 
-        if (Mutex.TryOpenExisting(GuardMutexName, out var guardMutex))
-        {
-            guardMutex.Dispose();
+        using var guardMutex = new Mutex(true, guardMutexName, out var createdNew);
 
-            return;
+        if (!createdNew)
+        {
+            return false;
         }
 
-        TimeoutRepair.RestoreAndClear(sharedState, savedTimeout);
+        try
+        {
+            if (!sharedState.TryReadTimeoutRepair(out var savedTimeout))
+            {
+                return false;
+            }
+
+            if (TimeoutRepair.RestoreAndClear(sharedState, savedTimeout, restore))
+            {
+                return true;
+            }
+
+            logger.Log("Failed to restore the foreground lock timeout; keeping the repair record for the next watchdog tick.");
+
+            return false;
+        }
+        finally
+        {
+            guardMutex.ReleaseMutex();
+        }
     }
 
     private static void SignalExit()
