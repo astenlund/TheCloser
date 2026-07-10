@@ -29,7 +29,8 @@ internal static class ProcessSettingsParser
             return null;
         }
 
-        if (Enum.TryParse<TitleBarClickPosition>(value, ignoreCase: true, out var clickPosition))
+        // Enum.TryParse accepts any numeric string, so IsDefined is needed to reject values outside the defined members.
+        if (Enum.TryParse<TitleBarClickPosition>(value, ignoreCase: true, out var clickPosition) && Enum.IsDefined(clickPosition))
         {
             return clickPosition;
         }
