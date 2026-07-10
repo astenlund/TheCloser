@@ -80,18 +80,26 @@ internal class WindowCloser
         using var _ = targetProcess;
 
         var settings = ProcessSettingsParser.Parse(_config, targetProcess.ProcessName, _logger.Log);
-        var killMethod = settings.Method ?? DefaultKillMethod;
-        var killAction = GetKillAction(killMethod);
-
-        if (killAction is null)
-        {
-            _logger.Log($"No kill action configured for method '{killMethod}'. Falling back to {DefaultKillMethod}.");
-            killAction = _killActions[DefaultKillMethod];
-        }
+        var killMethod = ResolveKillMethodName(settings.Method);
+        var killAction = _killActions[killMethod];
 
         _logger.Log($"{targetProcess.ProcessName} -> {killMethod}");
 
         killAction.Invoke(targetWindow, settings.ClickPosition ?? DefaultClickPosition);
+    }
+
+    internal string ResolveKillMethodName(string? configuredMethod)
+    {
+        var killMethod = configuredMethod ?? DefaultKillMethod;
+
+        if (_killActions.ContainsKey(killMethod))
+        {
+            return killMethod;
+        }
+
+        _logger.Log($"No kill action configured for method '{killMethod}'. Falling back to {DefaultKillMethod}.");
+
+        return DefaultKillMethod;
     }
 
     private void PostMessageLogged(IntPtr handle, WindowNotification message, uint? param = null)
@@ -290,6 +298,4 @@ internal class WindowCloser
             _logger.Log($"Failed to set foreground window for {targetWindow}");
         }
     }
-
-    private Action<IntPtr, TitleBarClickPosition>? GetKillAction(string killMethod) => _killActions.GetValueOrDefault(killMethod);
 }
