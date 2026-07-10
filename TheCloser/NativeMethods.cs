@@ -23,10 +23,12 @@ internal static class NativeMethods
         WM_SYSCOMMAND = 0x0112
     }
 
-    public static Point GetMouseCursorPosition()
+    public static bool TryGetMouseCursorPosition(out Point position)
     {
-        GetCursorPos(out var lpPoint);
-        return lpPoint;
+        var success = GetCursorPos(out var lpPoint);
+        position = lpPoint;
+
+        return success;
     }
 
     public static int GetProcessIdFromWindowHandle(IntPtr hWnd)
@@ -35,11 +37,11 @@ internal static class NativeMethods
         return (int)lpdwProcessId;
     }
 
-    public static void PostMessage(IntPtr hWnd, WindowNotification message, uint? param = null)
+    public static bool PostMessage(IntPtr hWnd, WindowNotification message, uint? param = null)
     {
-        var wParam = param != null ? new IntPtr(param.Value) : IntPtr.Zero;
+        var wParam = param is not null ? new IntPtr(param.Value) : IntPtr.Zero;
 
-        PostMessage(hWnd, message, wParam, IntPtr.Zero);
+        return PostMessage(hWnd, message, wParam, IntPtr.Zero);
     }
 
     public static IntPtr GetRootWindow(IntPtr hWnd)

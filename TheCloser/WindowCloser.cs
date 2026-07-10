@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics;
+using System.Runtime.InteropServices;
 using GregsStack.InputSimulatorStandard;
 using GregsStack.InputSimulatorStandard.Native;
 using Microsoft.Extensions.Configuration;
@@ -36,16 +37,23 @@ internal class WindowCloser
             { "CTRL-SHIFT-W", (handle, clickPos) => TrySendKeyPress(handle, clickPos, VirtualKeyCode.VK_W, VirtualKeyCode.CONTROL, VirtualKeyCode.SHIFT) },
             { "CTRL-W", (handle, clickPos) => TrySendKeyPress(handle, clickPos, VirtualKeyCode.VK_W, VirtualKeyCode.CONTROL) },
             { "ESCAPE", (handle, clickPos) => TrySendKeyPress(handle, clickPos, VirtualKeyCode.ESCAPE) },
-            { "WM_CLOSE", (handle, _) => PostMessage(handle, WindowNotification.WM_CLOSE) },
-            { "WM_DESTROY", (handle, _) => PostMessage(handle, WindowNotification.WM_DESTROY) },
-            { "WM_QUIT", (handle, _) => PostMessage(handle, WindowNotification.WM_QUIT) },
-            { "SC_CLOSE", (handle, _) => PostMessage(handle, WindowNotification.WM_SYSCOMMAND, SC_CLOSE) }
+            { "WM_CLOSE", (handle, _) => PostMessageLogged(handle, WindowNotification.WM_CLOSE) },
+            { "WM_DESTROY", (handle, _) => PostMessageLogged(handle, WindowNotification.WM_DESTROY) },
+            { "WM_QUIT", (handle, _) => PostMessageLogged(handle, WindowNotification.WM_QUIT) },
+            { "SC_CLOSE", (handle, _) => PostMessageLogged(handle, WindowNotification.WM_SYSCOMMAND, SC_CLOSE) }
         };
     }
 
     public void CloseWindowUnderCursor()
     {
-        var targetWindow = WindowFromPoint(GetMouseCursorPosition());
+        if (!TryGetMouseCursorPosition(out var cursorPosition))
+        {
+            _logger.Log($"Could not read the mouse cursor position (error {Marshal.GetLastPInvokeError()}). Aborting.");
+
+            return;
+        }
+
+        var targetWindow = WindowFromPoint(cursorPosition);
         var processId = GetProcessIdFromWindowHandle(targetWindow);
 
         if (processId == 0)
@@ -84,6 +92,14 @@ internal class WindowCloser
         _logger.Log($"{targetProcess.ProcessName} -> {killMethod}");
 
         killAction.Invoke(targetWindow, settings.ClickPosition ?? DefaultClickPosition);
+    }
+
+    private void PostMessageLogged(IntPtr handle, WindowNotification message, uint? param = null)
+    {
+        if (!PostMessage(handle, message, param))
+        {
+            _logger.Log($"PostMessage({message}) failed with Win32 error {Marshal.GetLastPInvokeError()} (5 means access denied; the target may be elevated).");
+        }
     }
 
     private bool TrySetForegroundWindow(IntPtr targetWindow, TitleBarClickPosition clickPosition)
@@ -160,7 +176,11 @@ internal class WindowCloser
             }
 
             AttachThreadInput(targetWindow);
-            SetForegroundWindow(targetWindow);
+
+            if (!SetForegroundWindow(targetWindow))
+            {
+                _logger.Log("SetForegroundWindow returned false.");
+            }
 
             Thread.Sleep(InputSettleDelay);
 
@@ -177,14 +197,19 @@ internal class WindowCloser
         }
     }
 
-    private static bool TrySetForegroundWindowByClicking(IntPtr targetWindow, TitleBarClickPosition clickPosition)
+    private bool TrySetForegroundWindowByClicking(IntPtr targetWindow, TitleBarClickPosition clickPosition)
     {
         if (!GetWindowRect(targetWindow, out var rect))
         {
             return false;
         }
 
-        GetCursorPos(out var oldPos);
+        if (!TryGetMouseCursorPosition(out var oldPos))
+        {
+            _logger.Log("Could not save the cursor position; skipping the click fallback.");
+
+            return false;
+        }
 
         try
         {
@@ -211,7 +236,10 @@ internal class WindowCloser
             inputs[1].type = INPUT_MOUSE;
             inputs[1].U.mi.dwFlags = MOUSEEVENTF_LEFTUP;
 
-            _ = SendInput(2, inputs, INPUT.Size);
+            if (SendInput((uint)inputs.Length, inputs, INPUT.Size) != inputs.Length)
+            {
+                _logger.Log($"SendInput injected fewer events than requested (error {Marshal.GetLastPInvokeError()}).");
+            }
 
             Thread.Sleep(InputSettleDelay);
 
