@@ -37,10 +37,10 @@ internal class WindowCloser
             { "CTRL-SHIFT-W", (handle, clickPos) => TrySendKeyPress(handle, clickPos, VirtualKeyCode.VK_W, VirtualKeyCode.CONTROL, VirtualKeyCode.SHIFT) },
             { "CTRL-W", (handle, clickPos) => TrySendKeyPress(handle, clickPos, VirtualKeyCode.VK_W, VirtualKeyCode.CONTROL) },
             { "ESCAPE", (handle, clickPos) => TrySendKeyPress(handle, clickPos, VirtualKeyCode.ESCAPE) },
-            { "WM_CLOSE", (handle, _) => PostMessageLogged(handle, WindowNotification.WM_CLOSE) },
-            { "WM_DESTROY", (handle, _) => PostMessageLogged(handle, WindowNotification.WM_DESTROY) },
-            { "WM_QUIT", (handle, _) => PostMessageLogged(handle, WindowNotification.WM_QUIT) },
-            { "SC_CLOSE", (handle, _) => PostMessageLogged(handle, WindowNotification.WM_SYSCOMMAND, SC_CLOSE) }
+            { "WM_CLOSE", (handle, _) => PostMessageLogged(GetRootWindow(handle), WindowNotification.WM_CLOSE) },
+            { "WM_DESTROY", (handle, _) => PostMessageLogged(GetRootWindow(handle), WindowNotification.WM_DESTROY) },
+            { "WM_QUIT", (handle, _) => PostMessageLogged(GetRootWindow(handle), WindowNotification.WM_QUIT) },
+            { "SC_CLOSE", (handle, _) => PostMessageLogged(GetRootWindow(handle), WindowNotification.WM_SYSCOMMAND, SC_CLOSE) }
         };
     }
 
