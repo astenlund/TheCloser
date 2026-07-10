@@ -75,10 +75,35 @@ internal class WindowCloser
     {
         var rootWindow = GetRootWindow(targetWindow);
 
-        return IsForeground(targetWindow) ||
-               TrySetForegroundWindowNative(targetWindow) ||
-               TrySetForegroundWindowNative(rootWindow) ||
-               TrySetForegroundWindowByClicking(rootWindow, clickPosition);
+        if (IsForeground(targetWindow))
+        {
+            _logger.Log("Foreground: target was already foreground.");
+
+            return true;
+        }
+
+        if (TrySetForegroundWindowNative(targetWindow))
+        {
+            _logger.Log("Foreground: native activation of the target window succeeded.");
+
+            return true;
+        }
+
+        if (rootWindow != targetWindow && TrySetForegroundWindowNative(rootWindow))
+        {
+            _logger.Log("Foreground: native activation of the root window succeeded.");
+
+            return true;
+        }
+
+        if (TrySetForegroundWindowByClicking(rootWindow, clickPosition))
+        {
+            _logger.Log("Foreground: title bar click fallback succeeded.");
+
+            return true;
+        }
+
+        return false;
     }
 
     private static bool IsForeground(IntPtr targetWindow)
