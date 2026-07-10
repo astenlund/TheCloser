@@ -144,7 +144,6 @@ internal class WindowCloser
                 }
             }
 
-            AllowSetForegroundWindow(GetProcessIdFromWindowHandle(targetWindow));
             AttachThreadInput(targetWindow);
             SetForegroundWindow(targetWindow);
 

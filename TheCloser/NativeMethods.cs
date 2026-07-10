@@ -63,10 +63,6 @@ internal static class NativeMethods
         return AttachThreadInput(currentThreadId, targetThreadId, false);
     }
 
-    [return: MarshalAs(Bool)]
-    [DllImport("user32.dll")]
-    public static extern bool AllowSetForegroundWindow(int dwProcessId);
-
     [DllImport("user32.dll", SetLastError=true)]
     static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
 
