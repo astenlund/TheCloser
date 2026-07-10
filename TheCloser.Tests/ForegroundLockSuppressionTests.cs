@@ -175,6 +175,27 @@ public class ForegroundLockSuppressionTests
     }
 
     [Fact]
+    public void Dispose_CalledTwice_RestoresOnlyOnce()
+    {
+        // Arrange
+        using var state = new SharedState(TestNames.UniqueMapName());
+        var restoreCount = 0;
+        var suppression = new ForegroundLockSuppression(state, Logger, TryGetReturning(200000u), () => true, _ =>
+        {
+            restoreCount++;
+
+            return true;
+        });
+
+        // Act
+        suppression.Dispose();
+        suppression.Dispose();
+
+        // Assert
+        Assert.Equal(1, restoreCount);
+    }
+
+    [Fact]
     public void Dispose_DisableFailed_NeverInvokesRestore()
     {
         // Arrange

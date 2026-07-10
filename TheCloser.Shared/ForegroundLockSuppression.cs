@@ -14,6 +14,8 @@ public sealed class ForegroundLockSuppression : IDisposable
     private readonly uint _originalTimeout;
     private readonly bool _timeoutDisabled;
 
+    private bool _disposed;
+
     public ForegroundLockSuppression(SharedState sharedState, Logger logger, TryGetTimeoutHandler? tryGet = null, Func<bool>? disable = null, Func<uint, bool>? restore = null)
     {
         _sharedState = sharedState;
@@ -49,6 +51,13 @@ public sealed class ForegroundLockSuppression : IDisposable
 
     public void Dispose()
     {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+
         if (_timeoutDisabled && !TimeoutRepair.RestoreAndClear(_sharedState, _originalTimeout, _restore))
         {
             _logger.Log("Failed to restore the foreground lock timeout; keeping the repair record for the daemon watchdog.");
