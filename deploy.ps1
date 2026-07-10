@@ -16,5 +16,8 @@ if (!(Test-Path $Destination)) {
     New-Item $Destination -ItemType Directory -Force | Out-Null
 }
 
-Copy-Item (Join-Path $PSScriptRoot 'TheCloser\bin\Release\net10.0-windows\win-x64\publish\TheCloser.exe') $Destination -Force -Verbose
-Copy-Item (Join-Path $PSScriptRoot 'TheCloser.Daemon\bin\Release\net10.0-windows\win-x64\publish\TheCloser.Daemon.exe') $Destination -Force -Verbose
+# The TFM lives in Directory.Build.props; deriving it here keeps a future TFM bump from silently copying stale binaries.
+$Tfm = ([xml](Get-Content (Join-Path $PSScriptRoot 'Directory.Build.props'))).Project.PropertyGroup.TargetFramework
+
+Copy-Item (Join-Path $PSScriptRoot "TheCloser\bin\Release\$Tfm\win-x64\publish\TheCloser.exe") $Destination -Force -Verbose
+Copy-Item (Join-Path $PSScriptRoot "TheCloser.Daemon\bin\Release\$Tfm\win-x64\publish\TheCloser.Daemon.exe") $Destination -Force -Verbose
