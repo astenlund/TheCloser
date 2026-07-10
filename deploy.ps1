@@ -16,5 +16,5 @@ if (!(Test-Path $Destination)) {
     New-Item $Destination -ItemType Directory -Force | Out-Null
 }
 
-Copy-Item (Join-Path $PSScriptRoot 'TheCloser\bin\Release\net9.0-windows\win-x64\publish\TheCloser.exe') $Destination -Force -Verbose
-Copy-Item (Join-Path $PSScriptRoot 'TheCloser.Daemon\bin\Release\net9.0-windows\win-x64\publish\TheCloser.Daemon.exe') $Destination -Force -Verbose
+Copy-Item (Join-Path $PSScriptRoot 'TheCloser\bin\Release\net10.0-windows\win-x64\publish\TheCloser.exe') $Destination -Force -Verbose
+Copy-Item (Join-Path $PSScriptRoot 'TheCloser.Daemon\bin\Release\net10.0-windows\win-x64\publish\TheCloser.Daemon.exe') $Destination -Force -Verbose
