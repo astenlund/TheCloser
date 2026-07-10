@@ -14,6 +14,9 @@ internal class WindowCloser
 {
     private const string DefaultKillMethod = "CTRL-W";
     private const TitleBarClickPosition DefaultClickPosition = Left;
+    private const int TitleBarClickOffsetX = 10;
+    private const int TitleBarClickOffsetY = 20;
+    private const int CursorMoveRetries = 5;
 
     private static readonly TimeSpan InputSettleDelay = TimeSpan.FromMilliseconds(50);
     private static readonly TimeSpan CursorPollInterval = TimeSpan.FromMilliseconds(10);
@@ -32,11 +35,11 @@ internal class WindowCloser
         _inputSimulator = new InputSimulator();
         _killActions = new Dictionary<string, Action<IntPtr, TitleBarClickPosition>>(StringComparer.OrdinalIgnoreCase)
         {
-            { "ALT-F4", (handle, clickPos) => TrySendKeyPress(handle, clickPos, VirtualKeyCode.F4, VirtualKeyCode.LMENU) },
-            { "CTRL-F4", (handle, clickPos) => TrySendKeyPress(handle, clickPos, VirtualKeyCode.F4, VirtualKeyCode.CONTROL) },
-            { "CTRL-SHIFT-W", (handle, clickPos) => TrySendKeyPress(handle, clickPos, VirtualKeyCode.VK_W, VirtualKeyCode.CONTROL, VirtualKeyCode.SHIFT) },
-            { "CTRL-W", (handle, clickPos) => TrySendKeyPress(handle, clickPos, VirtualKeyCode.VK_W, VirtualKeyCode.CONTROL) },
-            { "ESCAPE", (handle, clickPos) => TrySendKeyPress(handle, clickPos, VirtualKeyCode.ESCAPE) },
+            { "ALT-F4", (handle, clickPos) => SendKeyPressIfForeground(handle, clickPos, VirtualKeyCode.F4, VirtualKeyCode.LMENU) },
+            { "CTRL-F4", (handle, clickPos) => SendKeyPressIfForeground(handle, clickPos, VirtualKeyCode.F4, VirtualKeyCode.CONTROL) },
+            { "CTRL-SHIFT-W", (handle, clickPos) => SendKeyPressIfForeground(handle, clickPos, VirtualKeyCode.VK_W, VirtualKeyCode.CONTROL, VirtualKeyCode.SHIFT) },
+            { "CTRL-W", (handle, clickPos) => SendKeyPressIfForeground(handle, clickPos, VirtualKeyCode.VK_W, VirtualKeyCode.CONTROL) },
+            { "ESCAPE", (handle, clickPos) => SendKeyPressIfForeground(handle, clickPos, VirtualKeyCode.ESCAPE) },
             { "WM_CLOSE", (handle, _) => PostMessageLogged(GetRootWindow(handle), WindowNotification.WM_CLOSE) },
             { "WM_DESTROY", (handle, _) => PostMessageLogged(GetRootWindow(handle), WindowNotification.WM_DESTROY) },
             { "WM_QUIT", (handle, _) => PostMessageLogged(GetRootWindow(handle), WindowNotification.WM_QUIT) },
@@ -221,10 +224,10 @@ internal class WindowCloser
 
         try
         {
-            var clickY = rect.Top + 20;
+            var clickY = rect.Top + TitleBarClickOffsetY;
             var clickX = clickPosition switch
             {
-                Left => rect.Left + 10,
+                Left => rect.Left + TitleBarClickOffsetX,
                 Center => rect.Left + (rect.Right - rect.Left) / 2,
                 _ => throw new ArgumentOutOfRangeException(nameof(clickPosition), clickPosition, null)
             };
@@ -263,7 +266,7 @@ internal class WindowCloser
     {
         SetCursorPos(x, y);
 
-        for (var attempts = 0; attempts < 5; attempts++)
+        for (var attempts = 0; attempts < CursorMoveRetries; attempts++)
         {
             GetCursorPos(out var currentPos);
 
@@ -278,7 +281,7 @@ internal class WindowCloser
         return false;
     }
 
-    private void TrySendKeyPress(IntPtr targetWindow, TitleBarClickPosition clickPosition, VirtualKeyCode keyCode, params VirtualKeyCode[] modifierKeyCodes)
+    private void SendKeyPressIfForeground(IntPtr targetWindow, TitleBarClickPosition clickPosition, VirtualKeyCode keyCode, params VirtualKeyCode[] modifierKeyCodes)
     {
         if (TrySetForegroundWindow(targetWindow, clickPosition))
         {
@@ -295,7 +298,7 @@ internal class WindowCloser
         }
         else
         {
-            _logger.Log($"Failed to set foreground window for {targetWindow}");
+            _logger.Log($"Failed to set foreground window for window 0x{targetWindow:X}.");
         }
     }
 }

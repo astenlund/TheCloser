@@ -13,7 +13,8 @@ internal static class NativeMethods
     public const int SC_CLOSE = 0xF060;
     public const uint GA_ROOT = 2;
     public const uint MOUSEEVENTF_LEFTDOWN = 0x0002;
-    public const uint MOUSEEVENTF_LEFTUP   = 0x0004;
+    public const uint MOUSEEVENTF_LEFTUP = 0x0004;
+    public const uint INPUT_MOUSE = 0;
 
     public enum WindowNotification : uint
     {
@@ -34,6 +35,7 @@ internal static class NativeMethods
     public static int GetProcessIdFromWindowHandle(IntPtr hWnd)
     {
         _ = GetWindowThreadProcessId(hWnd, out var lpdwProcessId);
+
         return (int)lpdwProcessId;
     }
 
@@ -65,8 +67,8 @@ internal static class NativeMethods
         return AttachThreadInput(currentThreadId, targetThreadId, false);
     }
 
-    [DllImport("user32.dll", SetLastError=true)]
-    static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
 
     [DllImport("kernel32.dll")]
     public static extern uint GetCurrentThreadId();
@@ -77,14 +79,14 @@ internal static class NativeMethods
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(Bool)]
     public static extern bool GetCursorPos(out POINT lpPoint);
-    
+
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(Bool)]
     public static extern bool SetCursorPos(int X, int Y);
 
     [DllImport("user32.dll", SetLastError = true)]
-    public static extern uint SendInput(uint nInputs, [MarshalAs(UnmanagedType.LPArray), In] INPUT[] pInputs, int cbSize);
-    
+    public static extern uint SendInput(uint nInputs, [MarshalAs(LPArray), In] INPUT[] pInputs, int cbSize);
+
     [StructLayout(LayoutKind.Sequential)]
     public struct INPUT
     {
@@ -92,7 +94,7 @@ internal static class NativeMethods
         public InputUnion U;
         public static int Size => Marshal.SizeOf<INPUT>();
     }
-    
+
     [StructLayout(LayoutKind.Explicit)]
     public struct InputUnion
     {
@@ -103,7 +105,7 @@ internal static class NativeMethods
         [FieldOffset(0)]
         public HARDWAREINPUT hi;
     }
-    
+
     [StructLayout(LayoutKind.Sequential)]
     public struct MOUSEINPUT
     {
@@ -114,7 +116,7 @@ internal static class NativeMethods
         public uint time;
         public IntPtr dwExtraInfo;
     }
-    
+
     [StructLayout(LayoutKind.Sequential)]
     public struct KEYBDINPUT
     {
@@ -124,7 +126,7 @@ internal static class NativeMethods
         public uint time;
         public IntPtr dwExtraInfo;
     }
-    
+
     [StructLayout(LayoutKind.Sequential)]
     public struct HARDWAREINPUT
     {
@@ -132,8 +134,6 @@ internal static class NativeMethods
         public ushort wParamL;
         public ushort wParamH;
     }
-    
-    public const uint INPUT_MOUSE = 0;
 
     [DllImport("user32.dll", SetLastError = true)]
     public static extern IntPtr WindowFromPoint(Point p);
@@ -174,7 +174,7 @@ internal static class NativeMethods
             return new Point(p.X, p.Y);
         }
     }
-    
+
     [StructLayout(LayoutKind.Sequential)]
     public struct RECT
     {
