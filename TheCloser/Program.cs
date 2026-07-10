@@ -25,9 +25,7 @@ public static class Program
 
             if (!createdNew)
             {
-                Logger.Log($"Timestamp: {DateTime.UtcNow:O}");
-                Logger.Log("The previous instance is still running. Exiting...");
-                Logger.Log("");
+                LogEarlyExit("The previous instance is still running. Exiting...");
 
                 return;
             }
@@ -48,9 +46,7 @@ public static class Program
             // Negative can only mean a stale-format (pre-tick-count) or foreign value; treat it as not throttled.
             if (elapsedSinceLastRun >= 0 && elapsedSinceLastRun < StartupIntervalThresholdMs)
             {
-                Logger.Log($"Timestamp: {DateTime.UtcNow:O}");
-                Logger.Log($"The previous instance was started less than {StartupIntervalThresholdMs}ms ago. Exiting...");
-                Logger.Log("");
+                LogEarlyExit($"The previous instance was started less than {StartupIntervalThresholdMs}ms ago. Exiting...");
 
                 return;
             }
@@ -70,6 +66,13 @@ public static class Program
         {
             Logger.Log(ex.ToString());
         }
+    }
+
+    private static void LogEarlyExit(string reason)
+    {
+        Logger.Log($"Timestamp: {DateTime.UtcNow:O}");
+        Logger.Log(reason);
+        Logger.Log("");
     }
 
     private static IConfigurationRoot BuildConfiguration() => new ConfigurationBuilder()
