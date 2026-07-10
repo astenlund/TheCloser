@@ -97,11 +97,26 @@ internal class WindowCloser
 
         try
         {
-            if (ForegroundLockTimeout.TryGet(out originalTimeout))
+            if (ForegroundLockTimeout.TryGet(out var currentTimeout))
             {
-                _sharedState.SetTimeoutRepair(originalTimeout);
-                ForegroundLockTimeout.Disable();
-                timeoutDisabled = true;
+                if (_sharedState.TryReadTimeoutRepair(out var pendingTimeout))
+                {
+                    // An earlier restore failed; the pending record's saved value, not the current
+                    // (possibly still disabled) system value, is the true original. Never overwrite it.
+                    originalTimeout = pendingTimeout;
+                    timeoutDisabled = ForegroundLockTimeout.Disable();
+                }
+                else
+                {
+                    originalTimeout = currentTimeout;
+                    _sharedState.SetTimeoutRepair(originalTimeout);
+                    timeoutDisabled = ForegroundLockTimeout.Disable();
+
+                    if (!timeoutDisabled)
+                    {
+                        _sharedState.ClearTimeoutRepair();
+                    }
+                }
             }
 
             AllowSetForegroundWindow(GetProcessIdFromWindowHandle(targetWindow));
@@ -116,9 +131,9 @@ internal class WindowCloser
         {
             DetachThreadInput(targetWindow);
 
-            if (timeoutDisabled)
+            if (timeoutDisabled && !TimeoutRepair.RestoreAndClear(_sharedState, originalTimeout))
             {
-                TimeoutRepair.RestoreAndClear(_sharedState, originalTimeout);
+                _logger.Log("Failed to restore the foreground lock timeout; keeping the repair record for the daemon watchdog.");
             }
         }
     }

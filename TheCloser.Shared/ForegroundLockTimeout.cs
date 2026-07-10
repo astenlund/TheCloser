@@ -19,10 +19,10 @@ public static class ForegroundLockTimeout
         return SystemParametersInfo(SPI_GETFOREGROUNDLOCKTIMEOUT, 0, ref timeout, 0);
     }
 
-    public static void Disable() => SystemParametersInfo(SPI_SETFOREGROUNDLOCKTIMEOUT, 0, IntPtr.Zero, SPIF_SENDCHANGE);
+    public static bool Disable() => SystemParametersInfo(SPI_SETFOREGROUNDLOCKTIMEOUT, 0, IntPtr.Zero, SPIF_SENDCHANGE);
 
     // SPI_SETFOREGROUNDLOCKTIMEOUT takes its value through pvParam (as the value itself, not a pointer); uiParam is ignored.
-    public static void Restore(uint timeout) => SystemParametersInfo(SPI_SETFOREGROUNDLOCKTIMEOUT, 0, new IntPtr(timeout), SPIF_SENDCHANGE);
+    public static bool Restore(uint timeout) => SystemParametersInfo(SPI_SETFOREGROUNDLOCKTIMEOUT, 0, new IntPtr(timeout), SPIF_SENDCHANGE);
 
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(Bool)]
