@@ -1,5 +1,4 @@
-﻿using System.IO.MemoryMappedFiles;
-using TheCloser.Shared;
+﻿using TheCloser.Shared;
 using static TheCloser.Shared.Constants;
 
 namespace TheCloser.Daemon;
@@ -51,7 +50,8 @@ public class Program
             return;
         }
 
-        using var mmf = MemoryMappedFile.CreateOrOpen(MemoryMappedFileName, MemoryMappedFileSize);
+        var sharedState = new SharedState(MemoryMappedFileName);
+        using var mmf = sharedState.Pin();
         using var exitEvent = new EventWaitHandle(false, EventResetMode.AutoReset, DaemonExitEventName);
 
         exitEvent.WaitOne();

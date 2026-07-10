@@ -31,7 +31,9 @@ public static class Program
                 return;
             }
 
-            if (DateTime.UtcNow - TimestampHandler.ReadTimestamp() < StartupIntervalThreshold)
+            var sharedState = new SharedState(MemoryMappedFileName);
+
+            if (DateTime.UtcNow - sharedState.ReadTimestamp() < StartupIntervalThreshold)
             {
                 Logger.Log($"Timestamp: {DateTime.UtcNow:O}");
                 Logger.Log($"The previous instance was started less than {StartupIntervalThreshold.TotalMilliseconds}ms ago. Exiting...\r\n");
@@ -41,7 +43,7 @@ public static class Program
 
             StartDaemon();
 
-            TimestampHandler.WriteTimestamp(DateTime.UtcNow);
+            sharedState.WriteTimestamp(DateTime.UtcNow);
 
             WindowCloser.Create(Config).CloseWindowUnderCursor();
 
