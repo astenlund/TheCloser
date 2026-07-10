@@ -55,7 +55,7 @@ internal class WindowCloser
         }
 
         var targetProcess = Process.GetProcessById(processId);
-        var settings = GetProcessSettings(targetProcess);
+        var settings = ProcessSettingsParser.Parse(_config, targetProcess.ProcessName);
         var killMethod = settings.Method ?? DefaultKillMethod;
         var killAction = GetKillAction(killMethod) ?? _killActions[DefaultKillMethod];
 
@@ -200,29 +200,6 @@ internal class WindowCloser
         {
             Logger.Log($"Failed to set foreground window for {targetWindow}");
         }
-    }
-
-    private ProcessSettings GetProcessSettings(Process process)
-    {
-        var section = _config.GetSection(process.ProcessName);
-        
-        // Check if it's a simple string
-        var simpleValue = section.Value;
-        if (!string.IsNullOrEmpty(simpleValue))
-        {
-            return new ProcessSettings { Method = simpleValue.ToUpperInvariant() };
-        }
-        
-        // Otherwise, read values from sections
-        var settings = new ProcessSettings
-        {
-            Method = section["Method"]?.ToUpperInvariant(),
-            ClickPosition = Enum.TryParse<TitleBarClickPosition>(section["ClickPosition"], out var clickPos) 
-                ? clickPos 
-                : Left
-        };
-        
-        return settings;
     }
 
     private Action<IntPtr, TitleBarClickPosition>? GetKillAction(string killMethod) => _killActions.GetValueOrDefault(killMethod);
