@@ -6,7 +6,7 @@ namespace TheCloser.Shared;
 
 public sealed class SharedState : IDisposable
 {
-    private const int TimestampOffset = 0;
+    private const int ThrottleTickOffset = 0;
     private const int RepairFlagOffset = 8;
     private const int RepairValueOffset = 12;
     private const int RepairClear = 0;
@@ -21,9 +21,9 @@ public sealed class SharedState : IDisposable
         _accessor = _mmf.CreateViewAccessor();
     }
 
-    public void WriteTimestamp(DateTime timestamp) => _accessor.Write(TimestampOffset, timestamp.Ticks);
+    public void WriteThrottleTick(long tick) => _accessor.Write(ThrottleTickOffset, tick);
 
-    public DateTime ReadTimestamp() => new(_accessor.ReadInt64(TimestampOffset), DateTimeKind.Utc);
+    public long ReadThrottleTick() => _accessor.ReadInt64(ThrottleTickOffset);
 
     public void SetTimeoutRepair(uint originalTimeout)
     {

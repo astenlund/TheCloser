@@ -5,18 +5,18 @@ namespace TheCloser.Tests;
 public class SharedStateTests
 {
     [Fact]
-    public void WriteTimestamp_ThenReadTimestamp_RoundTrips()
+    public void WriteThrottleTick_ThenReadThrottleTick_RoundTrips()
     {
         // Arrange
         using var state = new SharedState(TestNames.UniqueMapName());
-        var expected = new DateTime(2026, 7, 10, 8, 30, 0, DateTimeKind.Utc);
+        const long expected = 881025843L;
 
         // Act
-        state.WriteTimestamp(expected);
-        var actual = state.ReadTimestamp();
+        state.WriteThrottleTick(expected);
+        var actual = state.ReadThrottleTick();
 
         // Assert
-        Assert.Equal(expected.Ticks, actual.Ticks);
+        Assert.Equal(expected, actual);
     }
 
     [Fact]

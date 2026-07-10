@@ -9,8 +9,8 @@ namespace TheCloser;
 public static class Program
 {
     private const int DaemonPinPollAttempts = 20;
+    private const long StartupIntervalThresholdMs = 200;
 
-    private static readonly TimeSpan StartupIntervalThreshold = TimeSpan.FromMilliseconds(200);
     private static readonly TimeSpan DaemonPinPollInterval = TimeSpan.FromMilliseconds(50);
     private static readonly Logger Logger = new(AssemblyName);
     private static readonly string ExeDirectory = Path.GetDirectoryName(Environment.ProcessPath)!;
@@ -26,7 +26,8 @@ public static class Program
             if (!createdNew)
             {
                 Logger.Log($"Timestamp: {DateTime.UtcNow:O}");
-                Logger.Log("The previous instance is still running. Exiting...\r\n");
+                Logger.Log("The previous instance is still running. Exiting...");
+                Logger.Log("");
 
                 return;
             }
@@ -35,10 +36,14 @@ public static class Program
 
             TimeoutRepair.TryRestorePending(sharedState);
 
-            if (DateTime.UtcNow - sharedState.ReadTimestamp() < StartupIntervalThreshold)
+            var elapsedSinceLastRun = Environment.TickCount64 - sharedState.ReadThrottleTick();
+
+            // Negative can only mean a stale-format (pre-tick-count) or foreign value; treat it as not throttled.
+            if (elapsedSinceLastRun >= 0 && elapsedSinceLastRun < StartupIntervalThresholdMs)
             {
                 Logger.Log($"Timestamp: {DateTime.UtcNow:O}");
-                Logger.Log($"The previous instance was started less than {StartupIntervalThreshold.TotalMilliseconds}ms ago. Exiting...\r\n");
+                Logger.Log($"The previous instance was started less than {StartupIntervalThresholdMs}ms ago. Exiting...");
+                Logger.Log("");
 
                 return;
             }
@@ -48,7 +53,7 @@ public static class Program
                 WaitForDaemonPin();
             }
 
-            sharedState.WriteTimestamp(DateTime.UtcNow);
+            sharedState.WriteThrottleTick(Environment.TickCount64);
 
             new WindowCloser(BuildConfiguration(), sharedState, Logger).CloseWindowUnderCursor();
 
