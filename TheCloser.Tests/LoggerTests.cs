@@ -122,7 +122,7 @@ public class LoggerTests
 
     private static (string AppName, string LogPath) UniqueLogTarget()
     {
-        var appName = $"TheCloser.Tests.{Guid.NewGuid():N}";
+        var appName = TestNames.UniqueLoggerName();
 
         return (appName, Path.Combine(Path.GetTempPath(), appName + ".log"));
     }

@@ -14,7 +14,7 @@ public class WindowCloserTests
     {
         // Arrange
         using var sharedState = new SharedState(TestNames.UniqueMapName());
-        var closer = new WindowCloser(new ConfigurationBuilder().Build(), sharedState, new Logger($"TheCloser.Tests.{Guid.NewGuid():N}"));
+        var closer = new WindowCloser(new ConfigurationBuilder().Build(), sharedState, new Logger(TestNames.UniqueLoggerName()));
 
         // Act
         var resolved = closer.ResolveKillMethodName(configured);
