@@ -24,7 +24,7 @@ public class Program
         {
             case DaemonStartArgument:
                 Logger.Log("Daemon starting...");
-                EnsureInstance();
+                Run();
                 break;
             case DaemonStopArgument:
                 Logger.Log("Daemon stopping...");
@@ -36,24 +36,19 @@ public class Program
         }
     }
 
-    private static void EnsureInstance()
-    {
-        if (Mutex.TryOpenExisting(MutexName, out var existingMutex))
-        {
-            Logger.Log("Daemon is already running. Exiting...");
-            existingMutex.Dispose();
-        }
-        else
-        {
-            Run();
-        }
-    }
-
     private static void Run()
     {
+        using var mutex = new Mutex(true, MutexName, out var createdNew);
+
+        if (!createdNew)
+        {
+            Logger.Log("Daemon is already running. Exiting...");
+
+            return;
+        }
+
         using var mmf = MemoryMappedFile.CreateOrOpen(MemoryMappedFileName, MemoryMappedFileSize);
         using var exitEvent = new EventWaitHandle(false, EventResetMode.AutoReset, ExitEventName);
-        using var mutex = new Mutex(true, MutexName);
 
         exitEvent.WaitOne();
 
