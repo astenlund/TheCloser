@@ -55,7 +55,22 @@ internal class WindowCloser
             return;
         }
 
-        var targetProcess = Process.GetProcessById(processId);
+        Process targetProcess;
+
+        try
+        {
+            targetProcess = Process.GetProcessById(processId);
+        }
+        catch (ArgumentException)
+        {
+            // The process under the cursor exited between hover and lookup.
+            _logger.Log("The process for the window under the cursor is no longer running.");
+
+            return;
+        }
+
+        using var _ = targetProcess;
+
         var settings = ProcessSettingsParser.Parse(_config, targetProcess.ProcessName, _logger.Log);
         var killMethod = settings.Method ?? DefaultKillMethod;
         var killAction = GetKillAction(killMethod);
