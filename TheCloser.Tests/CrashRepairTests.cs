@@ -1,12 +1,10 @@
 using TheCloser.Shared;
 
-using DaemonProgram = TheCloser.Daemon.Program;
-
 namespace TheCloser.Tests;
 
 public class CrashRepairTests
 {
-    private static readonly Logger Logger = new($"TheCloser.Tests.{Guid.NewGuid():N}");
+    private static readonly Logger Logger = new(TestNames.UniqueLoggerName());
 
     [Fact]
     public void TryRepairCrashedState_NothingPending_DoesNothing()
@@ -16,7 +14,7 @@ public class CrashRepairTests
         var restoreCalled = false;
 
         // Act
-        var repaired = DaemonProgram.TryRepairCrashedState(state, TestNames.UniqueMutexName(), Logger, _ => restoreCalled = true);
+        var repaired = CrashRepair.TryRepairCrashedState(state, TestNames.UniqueMutexName(), Logger, _ => restoreCalled = true);
 
         // Assert
         Assert.False(repaired);
@@ -32,7 +30,7 @@ public class CrashRepairTests
         uint restoredValue = 0;
 
         // Act
-        var repaired = DaemonProgram.TryRepairCrashedState(state, TestNames.UniqueMutexName(), Logger, value =>
+        var repaired = CrashRepair.TryRepairCrashedState(state, TestNames.UniqueMutexName(), Logger, value =>
         {
             restoredValue = value;
 
@@ -56,7 +54,7 @@ public class CrashRepairTests
         var restoreCalled = false;
 
         // Act
-        var repaired = DaemonProgram.TryRepairCrashedState(state, mutexName, Logger, _ => restoreCalled = true);
+        var repaired = CrashRepair.TryRepairCrashedState(state, mutexName, Logger, _ => restoreCalled = true);
 
         // Assert
         Assert.False(repaired);
@@ -72,7 +70,7 @@ public class CrashRepairTests
         state.SetTimeoutRepair(200000u);
 
         // Act
-        var repaired = DaemonProgram.TryRepairCrashedState(state, TestNames.UniqueMutexName(), Logger, _ => false);
+        var repaired = CrashRepair.TryRepairCrashedState(state, TestNames.UniqueMutexName(), Logger, _ => false);
 
         // Assert
         Assert.False(repaired);
