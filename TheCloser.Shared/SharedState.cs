@@ -37,9 +37,13 @@ public sealed class SharedState : IDisposable
 
     public bool TryReadTimeoutRepair(out uint originalTimeout)
     {
+        // The flag must be read before the value, mirroring the value-then-flag write order:
+        // a pending flag then guarantees the value load observes a committed value.
+        var pending = _accessor.ReadInt32(RepairFlagOffset) == RepairPending;
+
         originalTimeout = _accessor.ReadUInt32(RepairValueOffset);
 
-        return _accessor.ReadInt32(RepairFlagOffset) == RepairPending;
+        return pending;
     }
 
     public void Dispose()
