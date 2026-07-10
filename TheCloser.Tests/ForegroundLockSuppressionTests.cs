@@ -38,6 +38,42 @@ public class ForegroundLockSuppressionTests
     }
 
     [Fact]
+    public void Dispose_DisableFailedWithPendingRecord_NeverInvokesRestore()
+    {
+        // Arrange
+        using var state = new SharedState(TestNames.UniqueMapName());
+        state.SetTimeoutRepair(200000u);
+        var restoreCalled = false;
+        var suppression = new ForegroundLockSuppression(state, Logger, TryGetReturning(0u), () => false, _ => restoreCalled = true);
+
+        // Act
+        suppression.Dispose();
+
+        // Assert
+        Assert.False(restoreCalled);
+        Assert.True(state.TryReadTimeoutRepair(out var saved));
+        Assert.Equal(200000u, saved);
+    }
+
+    [Fact]
+    public void Dispose_TimeoutUnreadableWithPendingRecord_LeavesRecordIntact()
+    {
+        // Arrange
+        using var state = new SharedState(TestNames.UniqueMapName());
+        state.SetTimeoutRepair(200000u);
+        var restoreCalled = false;
+        var suppression = new ForegroundLockSuppression(state, Logger, FailingTryGet, () => true, _ => restoreCalled = true);
+
+        // Act
+        suppression.Dispose();
+
+        // Assert
+        Assert.False(restoreCalled);
+        Assert.True(state.TryReadTimeoutRepair(out var saved));
+        Assert.Equal(200000u, saved);
+    }
+
+    [Fact]
     public void Constructor_PendingRecord_NeverOverwritesSavedValue()
     {
         // Arrange: an earlier failed restore left the record pending while the system value reads as disabled.
@@ -136,6 +172,36 @@ public class ForegroundLockSuppressionTests
         // Assert
         Assert.Equal(200000u, restoredValue);
         Assert.False(state.TryReadTimeoutRepair(out _));
+    }
+
+    [Fact]
+    public void Dispose_DisableFailed_NeverInvokesRestore()
+    {
+        // Arrange
+        using var state = new SharedState(TestNames.UniqueMapName());
+        var restoreCalled = false;
+        var suppression = new ForegroundLockSuppression(state, Logger, TryGetReturning(200000u), () => false, _ => restoreCalled = true);
+
+        // Act
+        suppression.Dispose();
+
+        // Assert
+        Assert.False(restoreCalled);
+    }
+
+    [Fact]
+    public void Dispose_TimeoutUnreadable_NeverInvokesRestore()
+    {
+        // Arrange
+        using var state = new SharedState(TestNames.UniqueMapName());
+        var restoreCalled = false;
+        var suppression = new ForegroundLockSuppression(state, Logger, FailingTryGet, () => true, _ => restoreCalled = true);
+
+        // Act
+        suppression.Dispose();
+
+        // Assert
+        Assert.False(restoreCalled);
     }
 
     private static ForegroundLockSuppression.TryGetTimeoutHandler TryGetReturning(uint timeout) =>
