@@ -13,11 +13,7 @@ public static class Program
     private static readonly TimeSpan StartupIntervalThreshold = TimeSpan.FromMilliseconds(200);
     private static readonly TimeSpan DaemonPinPollInterval = TimeSpan.FromMilliseconds(50);
     private static readonly Logger Logger = new(AssemblyName);
-
-    private static readonly IConfigurationRoot Config = new ConfigurationBuilder()
-        .SetBasePath(Path.GetDirectoryName(Environment.ProcessPath)!)
-        .AddJsonFile("appsettings.json", true)
-        .Build();
+    private static readonly string ExeDirectory = Path.GetDirectoryName(Environment.ProcessPath)!;
 
     public static string AssemblyName => typeof(Program).Assembly.GetName().Name!;
 
@@ -54,7 +50,7 @@ public static class Program
 
             sharedState.WriteTimestamp(DateTime.UtcNow);
 
-            new WindowCloser(Config, sharedState, Logger).CloseWindowUnderCursor();
+            new WindowCloser(BuildConfiguration(), sharedState, Logger).CloseWindowUnderCursor();
 
             Logger.Log("");
         }
@@ -64,6 +60,11 @@ public static class Program
         }
     }
 
+    private static IConfigurationRoot BuildConfiguration() => new ConfigurationBuilder()
+        .SetBasePath(ExeDirectory)
+        .AddJsonFile("appsettings.json", optional: true)
+        .Build();
+
     private static bool StartDaemon()
     {
         if (Process.GetProcessesByName(DaemonAssemblyName).Length != 0)
@@ -71,7 +72,7 @@ public static class Program
             return false;
         }
 
-        var daemonExePath = Path.Combine(Path.GetDirectoryName(Environment.ProcessPath)!, $"{DaemonAssemblyName}.exe");
+        var daemonExePath = Path.Combine(ExeDirectory, $"{DaemonAssemblyName}.exe");
 
         if (!File.Exists(daemonExePath))
         {
