@@ -1,67 +1,50 @@
 using System.IO.MemoryMappedFiles;
-using System.Runtime.InteropServices;
 
 using static TheCloser.Shared.Constants;
 
 namespace TheCloser.Shared;
 
-public class SharedState
+public sealed class SharedState : IDisposable
 {
+    private const int TimestampOffset = 0;
     private const int RepairFlagOffset = 8;
     private const int RepairValueOffset = 12;
     private const int RepairClear = 0;
     private const int RepairPending = 1;
 
-    private readonly string _mapName;
+    private readonly MemoryMappedFile _mmf;
+    private readonly MemoryMappedViewAccessor _accessor;
 
     public SharedState(string mapName)
     {
-        _mapName = mapName;
+        _mmf = MemoryMappedFile.CreateOrOpen(mapName, MemoryMappedFileSize);
+        _accessor = _mmf.CreateViewAccessor();
     }
 
-    public MemoryMappedFile Pin() => MemoryMappedFile.CreateOrOpen(_mapName, MemoryMappedFileSize);
+    public void WriteTimestamp(DateTime timestamp) => _accessor.Write(TimestampOffset, timestamp.Ticks);
 
-    public void WriteTimestamp(DateTime timestamp)
-    {
-        using var mmf = MemoryMappedFile.CreateOrOpen(_mapName, MemoryMappedFileSize);
-        using var accessor = mmf.CreateViewAccessor();
-        var buffer = BitConverter.GetBytes(timestamp.Ticks);
-        accessor.WriteArray(0, buffer, 0, buffer.Length);
-    }
-
-    public DateTime ReadTimestamp()
-    {
-        using var mmf = MemoryMappedFile.CreateOrOpen(_mapName, MemoryMappedFileSize);
-        using var accessor = mmf.CreateViewAccessor();
-        var buffer = new byte[Marshal.SizeOf<long>()];
-        accessor.ReadArray(0, buffer, 0, buffer.Length);
-        var ticks = BitConverter.ToInt64(buffer, 0);
-
-        return new DateTime(ticks, DateTimeKind.Utc);
-    }
+    public DateTime ReadTimestamp() => new(_accessor.ReadInt64(TimestampOffset), DateTimeKind.Utc);
 
     public void SetTimeoutRepair(uint originalTimeout)
     {
-        using var mmf = MemoryMappedFile.CreateOrOpen(_mapName, MemoryMappedFileSize);
-        using var accessor = mmf.CreateViewAccessor();
-        accessor.Write(RepairValueOffset, originalTimeout);
-        accessor.Write(RepairFlagOffset, RepairPending);
+        // The saved value must be committed before the flag so a kill between the stores can never publish a pending flag with an unwritten value.
+        _accessor.Write(RepairValueOffset, originalTimeout);
+        _accessor.Write(RepairFlagOffset, RepairPending);
     }
 
-    public void ClearTimeoutRepair()
-    {
-        using var mmf = MemoryMappedFile.CreateOrOpen(_mapName, MemoryMappedFileSize);
-        using var accessor = mmf.CreateViewAccessor();
-        accessor.Write(RepairFlagOffset, RepairClear);
-    }
+    // Clears only the flag; the saved value must stay readable so a concurrent double-restore stays idempotent.
+    public void ClearTimeoutRepair() => _accessor.Write(RepairFlagOffset, RepairClear);
 
     public bool TryReadTimeoutRepair(out uint originalTimeout)
     {
-        using var mmf = MemoryMappedFile.CreateOrOpen(_mapName, MemoryMappedFileSize);
-        using var accessor = mmf.CreateViewAccessor();
-        var flag = accessor.ReadInt32(RepairFlagOffset);
-        originalTimeout = accessor.ReadUInt32(RepairValueOffset);
+        originalTimeout = _accessor.ReadUInt32(RepairValueOffset);
 
-        return flag == RepairPending;
+        return _accessor.ReadInt32(RepairFlagOffset) == RepairPending;
+    }
+
+    public void Dispose()
+    {
+        _accessor.Dispose();
+        _mmf.Dispose();
     }
 }

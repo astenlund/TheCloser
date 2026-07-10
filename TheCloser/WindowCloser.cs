@@ -111,8 +111,7 @@ internal class WindowCloser
 
             if (timeoutDisabled)
             {
-                ForegroundLockTimeout.Restore(originalTimeout);
-                _sharedState.ClearTimeoutRepair();
+                TimeoutRepair.RestoreAndClear(_sharedState, originalTimeout);
             }
         }
     }

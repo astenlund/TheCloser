@@ -7,7 +7,10 @@ namespace TheCloser;
 
 public static class Program
 {
+    private const int DaemonPinPollAttempts = 20;
+
     private static readonly TimeSpan StartupIntervalThreshold = TimeSpan.FromMilliseconds(200);
+    private static readonly TimeSpan DaemonPinPollInterval = TimeSpan.FromMilliseconds(50);
     private static readonly Logger Logger = Logger.Create(AssemblyName);
 
     private static readonly IConfigurationRoot Config = new ConfigurationBuilder()
@@ -31,13 +34,9 @@ public static class Program
                 return;
             }
 
-            var sharedState = new SharedState(MemoryMappedFileName);
+            using var sharedState = new SharedState(MemoryMappedFileName);
 
-            if (sharedState.TryReadTimeoutRepair(out var savedTimeout))
-            {
-                ForegroundLockTimeout.Restore(savedTimeout);
-                sharedState.ClearTimeoutRepair();
-            }
+            TimeoutRepair.TryRestorePending(sharedState);
 
             if (DateTime.UtcNow - sharedState.ReadTimestamp() < StartupIntervalThreshold)
             {
@@ -47,7 +46,10 @@ public static class Program
                 return;
             }
 
-            StartDaemon();
+            if (StartDaemon())
+            {
+                WaitForDaemonPin();
+            }
 
             sharedState.WriteTimestamp(DateTime.UtcNow);
 
@@ -61,11 +63,11 @@ public static class Program
         }
     }
 
-    private static void StartDaemon()
+    private static bool StartDaemon()
     {
         if (Process.GetProcessesByName(Daemon.Program.AssemblyName).Length != 0)
         {
-            return;
+            return false;
         }
 
         var daemonExePath = Path.Combine(Path.GetDirectoryName(Environment.ProcessPath)!, $"{Daemon.Program.AssemblyName}.exe");
@@ -73,7 +75,8 @@ public static class Program
         if (!File.Exists(daemonExePath))
         {
             Logger.Log("Could not find Daemon executable.");
-            return;
+
+            return false;
         }
 
         var startInfo = new ProcessStartInfo
@@ -85,5 +88,25 @@ public static class Program
         };
 
         Process.Start(startInfo);
+
+        return true;
+    }
+
+    private static void WaitForDaemonPin()
+    {
+        // The app's own SharedState handle keeps the shared memory alive, so its existence proves nothing; the daemon publishes its mutex only after pinning.
+        for (var attempt = 0; attempt < DaemonPinPollAttempts; attempt++)
+        {
+            if (Mutex.TryOpenExisting(DaemonMutexName, out var daemonMutex))
+            {
+                daemonMutex.Dispose();
+
+                return;
+            }
+
+            Thread.Sleep(DaemonPinPollInterval);
+        }
+
+        Logger.Log("Timed out waiting for the daemon to pin the shared memory.");
     }
 }

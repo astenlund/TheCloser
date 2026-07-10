@@ -42,6 +42,8 @@ public class Program
 
     private static void Run()
     {
+        // The shared memory must be pinned before the mutex is published: the app treats the mutex's existence as proof that the pin is in place.
+        using var sharedState = new SharedState(MemoryMappedFileName);
         using var mutex = new Mutex(true, DaemonMutexName, out var createdNew);
 
         if (!createdNew)
@@ -51,8 +53,6 @@ public class Program
             return;
         }
 
-        var sharedState = new SharedState(MemoryMappedFileName);
-        using var mmf = sharedState.Pin();
         using var exitEvent = new EventWaitHandle(false, EventResetMode.AutoReset, DaemonExitEventName);
 
         while (!exitEvent.WaitOne(WatchdogInterval))
@@ -84,8 +84,7 @@ public class Program
             return;
         }
 
-        ForegroundLockTimeout.Restore(savedTimeout);
-        sharedState.ClearTimeoutRepair();
+        TimeoutRepair.RestoreAndClear(sharedState, savedTimeout);
     }
 
     private static void SignalExit()
