@@ -21,7 +21,7 @@ public static class Program
     {
         try
         {
-            using var mutex = new Mutex(initiallyOwned: true, "Global\\TheCloserGuardMutex", out var createdNew);
+            using var mutex = new Mutex(initiallyOwned: true, GuardMutexName, out var createdNew);
 
             if (!createdNew)
             {

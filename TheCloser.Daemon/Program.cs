@@ -6,9 +6,6 @@ namespace TheCloser.Daemon;
 
 public class Program
 {
-    private const string ExitEventName = "TheCloserDaemonExitEvent";
-    private const string MutexName = "TheCloserDaemonMutex";
-
     private static readonly Logger Logger = Logger.Create("TheCloser.Daemon");
 
     public static string AssemblyName => typeof(Program).Assembly.GetName().Name!;
@@ -45,7 +42,7 @@ public class Program
 
     private static void Run()
     {
-        using var mutex = new Mutex(true, MutexName, out var createdNew);
+        using var mutex = new Mutex(true, DaemonMutexName, out var createdNew);
 
         if (!createdNew)
         {
@@ -55,7 +52,7 @@ public class Program
         }
 
         using var mmf = MemoryMappedFile.CreateOrOpen(MemoryMappedFileName, MemoryMappedFileSize);
-        using var exitEvent = new EventWaitHandle(false, EventResetMode.AutoReset, ExitEventName);
+        using var exitEvent = new EventWaitHandle(false, EventResetMode.AutoReset, DaemonExitEventName);
 
         exitEvent.WaitOne();
 
@@ -64,7 +61,7 @@ public class Program
 
     private static void SignalExit()
     {
-        if (EventWaitHandle.TryOpenExisting(ExitEventName, out var exitEvent))
+        if (EventWaitHandle.TryOpenExisting(DaemonExitEventName, out var exitEvent))
         {
             exitEvent.Set();
             exitEvent.Dispose();
