@@ -1,7 +1,5 @@
 using Microsoft.Extensions.Configuration;
 
-using static TheCloser.TitleBarClickPosition;
-
 namespace TheCloser;
 
 internal static class ProcessSettingsParser
@@ -14,15 +12,30 @@ internal static class ProcessSettingsParser
 
         if (!string.IsNullOrEmpty(simpleValue))
         {
-            return new ProcessSettings { Method = simpleValue.ToUpperInvariant() };
+            return new ProcessSettings { Method = simpleValue };
         }
 
         return new ProcessSettings
         {
-            Method = section["Method"]?.ToUpperInvariant(),
-            ClickPosition = Enum.TryParse<TitleBarClickPosition>(section["ClickPosition"], out var clickPos)
-                ? clickPos
-                : Left
+            Method = section["Method"],
+            ClickPosition = ParseClickPosition(section["ClickPosition"], processName, logWarning)
         };
+    }
+
+    private static TitleBarClickPosition? ParseClickPosition(string? value, string processName, Action<string>? logWarning)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return null;
+        }
+
+        if (Enum.TryParse<TitleBarClickPosition>(value, ignoreCase: true, out var clickPosition))
+        {
+            return clickPosition;
+        }
+
+        logWarning?.Invoke($"Invalid ClickPosition '{value}' for process '{processName}'. Ignoring it.");
+
+        return null;
     }
 }

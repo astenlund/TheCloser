@@ -26,7 +26,7 @@ internal class WindowCloser
         _config = config;
         _sharedState = sharedState;
         _inputSimulator = new InputSimulator();
-        _killActions = new Dictionary<string, Action<IntPtr, TitleBarClickPosition>>
+        _killActions = new Dictionary<string, Action<IntPtr, TitleBarClickPosition>>(StringComparer.OrdinalIgnoreCase)
         {
             { "ALT-F4", (handle, clickPos) => TrySendKeyPress(handle, clickPos, VirtualKeyCode.F4, VirtualKeyCode.LMENU) },
             { "CTRL-F4", (handle, clickPos) => TrySendKeyPress(handle, clickPos, VirtualKeyCode.F4, VirtualKeyCode.CONTROL) },
@@ -55,9 +55,15 @@ internal class WindowCloser
         }
 
         var targetProcess = Process.GetProcessById(processId);
-        var settings = ProcessSettingsParser.Parse(_config, targetProcess.ProcessName);
+        var settings = ProcessSettingsParser.Parse(_config, targetProcess.ProcessName, Logger.Log);
         var killMethod = settings.Method ?? DefaultKillMethod;
-        var killAction = GetKillAction(killMethod) ?? _killActions[DefaultKillMethod];
+        var killAction = GetKillAction(killMethod);
+
+        if (killAction is null)
+        {
+            Logger.Log($"No kill action configured for method '{killMethod}'. Falling back to {DefaultKillMethod}.");
+            killAction = _killActions[DefaultKillMethod];
+        }
 
         Logger.Log($"{targetProcess.ProcessName} -> {killMethod}");
 
