@@ -33,6 +33,12 @@ public static class Program
 
             var sharedState = new SharedState(MemoryMappedFileName);
 
+            if (sharedState.TryReadTimeoutRepair(out var savedTimeout))
+            {
+                ForegroundLockTimeout.Restore(savedTimeout);
+                sharedState.ClearTimeoutRepair();
+            }
+
             if (DateTime.UtcNow - sharedState.ReadTimestamp() < StartupIntervalThreshold)
             {
                 Logger.Log($"Timestamp: {DateTime.UtcNow:O}");
@@ -45,7 +51,7 @@ public static class Program
 
             sharedState.WriteTimestamp(DateTime.UtcNow);
 
-            WindowCloser.Create(Config).CloseWindowUnderCursor();
+            WindowCloser.Create(Config, sharedState).CloseWindowUnderCursor();
 
             Logger.Log("");
         }

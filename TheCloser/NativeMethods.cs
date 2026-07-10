@@ -148,10 +148,6 @@ internal static class NativeMethods
     public const uint INPUT_MOUSE = 0;
     public const uint INPUT_KEYBOARD = 1;
     public const uint INPUT_HARDWARE = 2;
-    
-    public const uint SPI_GETFOREGROUNDLOCKTIMEOUT = 0x2000;
-    public const uint SPI_SETFOREGROUNDLOCKTIMEOUT = 0x2001;
-    public const uint SPIF_SENDCHANGE = 0x02;
 
     [DllImport("user32.dll", SetLastError = true)]
     public static extern IntPtr WindowFromPoint(Point p);
@@ -228,14 +224,6 @@ internal static class NativeMethods
     /// </returns>
     [DllImport("user32.dll")]
     public static extern IntPtr GetForegroundWindow();
-    
-    [DllImport("user32.dll", SetLastError = true)]
-    [return: MarshalAs(Bool)]
-    public static extern bool SystemParametersInfo(uint uiAction, uint uiParam, ref uint pvParam, uint fWinIni);
-    
-    [DllImport("user32.dll", SetLastError = true)]
-    [return: MarshalAs(Bool)]
-    public static extern bool SystemParametersInfo(uint uiAction, uint uiParam, IntPtr pvParam, uint fWinIni);
 
     [StructLayout(LayoutKind.Sequential)]
     public struct POINT

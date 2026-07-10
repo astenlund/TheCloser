@@ -17,12 +17,14 @@ internal class WindowCloser
     private static readonly Logger Logger = Logger.Create(Program.AssemblyName);
 
     private readonly IConfiguration _config;
+    private readonly SharedState _sharedState;
     private readonly InputSimulator _inputSimulator;
     private readonly Dictionary<string, Action<IntPtr, TitleBarClickPosition>> _killActions;
 
-    private WindowCloser(IConfiguration config)
+    private WindowCloser(IConfiguration config, SharedState sharedState)
     {
         _config = config;
+        _sharedState = sharedState;
         _inputSimulator = new InputSimulator();
         _killActions = new Dictionary<string, Action<IntPtr, TitleBarClickPosition>>
         {
@@ -38,7 +40,7 @@ internal class WindowCloser
         };
     }
 
-    public static WindowCloser Create(IConfiguration config) => new(config);
+    public static WindowCloser Create(IConfiguration config, SharedState sharedState) => new(config, sharedState);
 
     public void CloseWindowUnderCursor()
     {
@@ -62,7 +64,7 @@ internal class WindowCloser
         killAction.Invoke(targetWindow, settings.ClickPosition ?? DefaultClickPosition);
     }
 
-    private static bool TrySetForegroundWindow(IntPtr targetWindow, TitleBarClickPosition clickPosition)
+    private bool TrySetForegroundWindow(IntPtr targetWindow, TitleBarClickPosition clickPosition)
     {
         var rootWindow = GetRootWindow(targetWindow);
 
@@ -81,19 +83,20 @@ internal class WindowCloser
                foregroundWindow == rootWindow;
     }
 
-    private static bool TrySetForegroundWindowNative(IntPtr targetWindow)
+    private bool TrySetForegroundWindowNative(IntPtr targetWindow)
     {
         uint originalTimeout = 0;
         var timeoutDisabled = false;
-        
+
         try
         {
-            if (SystemParametersInfo(SPI_GETFOREGROUNDLOCKTIMEOUT, 0, ref originalTimeout, 0))
+            if (ForegroundLockTimeout.TryGet(out originalTimeout))
             {
-                SystemParametersInfo(SPI_SETFOREGROUNDLOCKTIMEOUT, 0, IntPtr.Zero, SPIF_SENDCHANGE);
+                _sharedState.SetTimeoutRepair(originalTimeout);
+                ForegroundLockTimeout.Disable();
                 timeoutDisabled = true;
             }
-            
+
             AllowSetForegroundWindow(GetProcessIdFromWindowHandle(targetWindow));
             AttachThreadInput(targetWindow);
             SetForegroundWindow(targetWindow);
@@ -105,10 +108,11 @@ internal class WindowCloser
         finally
         {
             DetachThreadInput(targetWindow);
-            
+
             if (timeoutDisabled)
             {
-                SystemParametersInfo(SPI_SETFOREGROUNDLOCKTIMEOUT, originalTimeout, IntPtr.Zero, SPIF_SENDCHANGE);
+                ForegroundLockTimeout.Restore(originalTimeout);
+                _sharedState.ClearTimeoutRepair();
             }
         }
     }

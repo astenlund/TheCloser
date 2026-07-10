@@ -5,6 +5,7 @@ namespace TheCloser.Daemon;
 
 public class Program
 {
+    private static readonly TimeSpan WatchdogInterval = TimeSpan.FromSeconds(5);
     private static readonly Logger Logger = Logger.Create("TheCloser.Daemon");
 
     public static string AssemblyName => typeof(Program).Assembly.GetName().Name!;
@@ -54,9 +55,37 @@ public class Program
         using var mmf = sharedState.Pin();
         using var exitEvent = new EventWaitHandle(false, EventResetMode.AutoReset, DaemonExitEventName);
 
-        exitEvent.WaitOne();
+        while (!exitEvent.WaitOne(WatchdogInterval))
+        {
+            try
+            {
+                RepairIfCrashed(sharedState);
+            }
+            catch (Exception ex)
+            {
+                Logger.Log(ex.ToString());
+            }
+        }
 
         Logger.Log("Daemon STOP signal received. Exiting...");
+    }
+
+    private static void RepairIfCrashed(SharedState sharedState)
+    {
+        if (!sharedState.TryReadTimeoutRepair(out var savedTimeout))
+        {
+            return;
+        }
+
+        if (Mutex.TryOpenExisting(GuardMutexName, out var guardMutex))
+        {
+            guardMutex.Dispose();
+
+            return;
+        }
+
+        ForegroundLockTimeout.Restore(savedTimeout);
+        sharedState.ClearTimeoutRepair();
     }
 
     private static void SignalExit()
