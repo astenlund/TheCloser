@@ -34,7 +34,14 @@ public static class Program
 
             using var sharedState = new SharedState(MemoryMappedFileName);
 
-            TimeoutRepair.TryRestorePending(sharedState);
+            // The pending pre-check keeps the common no-record startup silent; the guard mutex held
+            // above means the daemon cannot repair concurrently, so the two reads cannot race.
+            if (sharedState.TryReadTimeoutRepair(out _))
+            {
+                Logger.Log(TimeoutRepair.TryRestorePending(sharedState)
+                    ? "Restored the foreground lock timeout after a detected crash."
+                    : "Failed to restore the foreground lock timeout; keeping the repair record.");
+            }
 
             var elapsedSinceLastRun = Environment.TickCount64 - sharedState.ReadThrottleTick();
 
