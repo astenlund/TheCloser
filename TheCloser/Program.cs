@@ -19,29 +19,38 @@ public static class Program
 
     public static void Main()
     {
-        using var mutex = new Mutex(initiallyOwned: true, "Global\\TheCloserGuardMutex", out var createdNew);
-
-        if (!createdNew)
+        try
         {
-            Logger.Log($"Timestamp: {DateTime.UtcNow:O}");
-            Logger.Log("The previous instance is still running. Exiting...\r\n");
-            return;
-        }
+            using var mutex = new Mutex(initiallyOwned: true, "Global\\TheCloserGuardMutex", out var createdNew);
 
-        if (DateTime.UtcNow - TimestampHandler.ReadTimestamp() < StartupIntervalThreshold)
+            if (!createdNew)
+            {
+                Logger.Log($"Timestamp: {DateTime.UtcNow:O}");
+                Logger.Log("The previous instance is still running. Exiting...\r\n");
+
+                return;
+            }
+
+            if (DateTime.UtcNow - TimestampHandler.ReadTimestamp() < StartupIntervalThreshold)
+            {
+                Logger.Log($"Timestamp: {DateTime.UtcNow:O}");
+                Logger.Log($"The previous instance was started less than {StartupIntervalThreshold.TotalMilliseconds}ms ago. Exiting...\r\n");
+
+                return;
+            }
+
+            StartDaemon();
+
+            TimestampHandler.WriteTimestamp(DateTime.UtcNow);
+
+            WindowCloser.Create(Config).CloseWindowUnderCursor();
+
+            Logger.Log("");
+        }
+        catch (Exception ex)
         {
-            Logger.Log($"Timestamp: {DateTime.UtcNow:O}");
-            Logger.Log($"The previous instance was started less than {StartupIntervalThreshold.TotalMilliseconds}ms ago. Exiting...\r\n");
-            return;
+            Logger.Log(ex.ToString());
         }
-
-        StartDaemon();
-
-        TimestampHandler.WriteTimestamp(DateTime.UtcNow);
-
-        WindowCloser.Create(Config).CloseWindowUnderCursor();
-
-        Logger.Log("");
     }
 
     private static void StartDaemon()

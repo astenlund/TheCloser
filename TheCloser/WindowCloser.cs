@@ -43,7 +43,16 @@ internal class WindowCloser
     public void CloseWindowUnderCursor()
     {
         var targetWindow = WindowFromPoint(GetMouseCursorPosition());
-        var targetProcess = Process.GetProcessById(GetProcessIdFromWindowHandle(targetWindow));
+        var processId = GetProcessIdFromWindowHandle(targetWindow);
+
+        if (processId == 0)
+        {
+            Logger.Log("Could not determine the process for the window under the cursor.");
+
+            return;
+        }
+
+        var targetProcess = Process.GetProcessById(processId);
         var settings = GetProcessSettings(targetProcess);
         var killMethod = settings.Method ?? DefaultKillMethod;
         var killAction = GetKillAction(killMethod) ?? _killActions[DefaultKillMethod];

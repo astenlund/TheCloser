@@ -15,24 +15,31 @@ public class Program
 
     public static void Main(string[] args)
     {
-        if (args.Length == 0)
+        try
         {
-            return;
-        }
+            if (args.Length == 0)
+            {
+                return;
+            }
 
-        switch (args[0])
+            switch (args[0])
+            {
+                case DaemonStartArgument:
+                    Logger.Log("Daemon starting...");
+                    Run();
+                    break;
+                case DaemonStopArgument:
+                    Logger.Log("Daemon stopping...");
+                    SignalExit();
+                    break;
+                default:
+                    Logger.Log($"Daemon could not be started. Unknown argument: '{args[0]}'");
+                    break;
+            }
+        }
+        catch (Exception ex)
         {
-            case DaemonStartArgument:
-                Logger.Log("Daemon starting...");
-                Run();
-                break;
-            case DaemonStopArgument:
-                Logger.Log("Daemon stopping...");
-                SignalExit();
-                break;
-            default:
-                Logger.Log($"Daemon could not be started. Unknown argument: '{args[0]}'");
-                break;
+            Logger.Log(ex.ToString());
         }
     }
 
