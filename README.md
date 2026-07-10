@@ -16,7 +16,7 @@ This is a utility that, when executed, closes the window or tab currently under 
 
 ## Configuration
 
-Applications can be configured with either a simple method string or an object with method and click position settings.
+Applications can be configured with either a simple method string or an object with method and click position settings. The configuration is read from an appsettings.json file in the directory of the deployed executable and is maintained by hand there; the repository carries no appsettings.json.
 
 ### Example appsettings.json
 
