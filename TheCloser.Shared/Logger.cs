@@ -6,14 +6,12 @@ public class Logger
 
     private readonly string _logPath;
 
-    private Logger(string appName)
+    public Logger(string appName)
     {
         _logPath = Path.Combine(Path.GetTempPath(), appName + ".log");
 
         RotateIfTooLarge();
     }
-
-    public static Logger Create(string appName) => new(appName);
 
     public void Log(string msg)
     {

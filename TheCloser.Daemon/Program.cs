@@ -1,4 +1,5 @@
 ﻿using TheCloser.Shared;
+
 using static TheCloser.Shared.Constants;
 
 namespace TheCloser.Daemon;
@@ -6,9 +7,7 @@ namespace TheCloser.Daemon;
 public class Program
 {
     private static readonly TimeSpan WatchdogInterval = TimeSpan.FromSeconds(5);
-    private static readonly Logger Logger = Logger.Create("TheCloser.Daemon");
-
-    public static string AssemblyName => typeof(Program).Assembly.GetName().Name!;
+    private static readonly Logger Logger = new(DaemonAssemblyName);
 
     public static void Main(string[] args)
     {

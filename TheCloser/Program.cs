@@ -1,6 +1,7 @@
 ﻿using System.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using TheCloser.Shared;
+
 using static TheCloser.Shared.Constants;
 
 namespace TheCloser;
@@ -11,7 +12,7 @@ public static class Program
 
     private static readonly TimeSpan StartupIntervalThreshold = TimeSpan.FromMilliseconds(200);
     private static readonly TimeSpan DaemonPinPollInterval = TimeSpan.FromMilliseconds(50);
-    private static readonly Logger Logger = Logger.Create(AssemblyName);
+    private static readonly Logger Logger = new(AssemblyName);
 
     private static readonly IConfigurationRoot Config = new ConfigurationBuilder()
         .SetBasePath(Path.GetDirectoryName(Environment.ProcessPath)!)
@@ -53,7 +54,7 @@ public static class Program
 
             sharedState.WriteTimestamp(DateTime.UtcNow);
 
-            WindowCloser.Create(Config, sharedState).CloseWindowUnderCursor();
+            new WindowCloser(Config, sharedState, Logger).CloseWindowUnderCursor();
 
             Logger.Log("");
         }
@@ -65,12 +66,12 @@ public static class Program
 
     private static bool StartDaemon()
     {
-        if (Process.GetProcessesByName(Daemon.Program.AssemblyName).Length != 0)
+        if (Process.GetProcessesByName(DaemonAssemblyName).Length != 0)
         {
             return false;
         }
 
-        var daemonExePath = Path.Combine(Path.GetDirectoryName(Environment.ProcessPath)!, $"{Daemon.Program.AssemblyName}.exe");
+        var daemonExePath = Path.Combine(Path.GetDirectoryName(Environment.ProcessPath)!, $"{DaemonAssemblyName}.exe");
 
         if (!File.Exists(daemonExePath))
         {

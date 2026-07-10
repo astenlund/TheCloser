@@ -14,17 +14,20 @@ internal class WindowCloser
     private const string DefaultKillMethod = "CTRL-W";
     private const TitleBarClickPosition DefaultClickPosition = Left;
 
-    private static readonly Logger Logger = Logger.Create(Program.AssemblyName);
+    private static readonly TimeSpan InputSettleDelay = TimeSpan.FromMilliseconds(50);
+    private static readonly TimeSpan CursorPollInterval = TimeSpan.FromMilliseconds(10);
 
     private readonly IConfiguration _config;
     private readonly SharedState _sharedState;
+    private readonly Logger _logger;
     private readonly InputSimulator _inputSimulator;
     private readonly Dictionary<string, Action<IntPtr, TitleBarClickPosition>> _killActions;
 
-    private WindowCloser(IConfiguration config, SharedState sharedState)
+    public WindowCloser(IConfiguration config, SharedState sharedState, Logger logger)
     {
         _config = config;
         _sharedState = sharedState;
+        _logger = logger;
         _inputSimulator = new InputSimulator();
         _killActions = new Dictionary<string, Action<IntPtr, TitleBarClickPosition>>(StringComparer.OrdinalIgnoreCase)
         {
@@ -40,8 +43,6 @@ internal class WindowCloser
         };
     }
 
-    public static WindowCloser Create(IConfiguration config, SharedState sharedState) => new(config, sharedState);
-
     public void CloseWindowUnderCursor()
     {
         var targetWindow = WindowFromPoint(GetMouseCursorPosition());
@@ -49,23 +50,23 @@ internal class WindowCloser
 
         if (processId == 0)
         {
-            Logger.Log("Could not determine the process for the window under the cursor.");
+            _logger.Log("Could not determine the process for the window under the cursor.");
 
             return;
         }
 
         var targetProcess = Process.GetProcessById(processId);
-        var settings = ProcessSettingsParser.Parse(_config, targetProcess.ProcessName, Logger.Log);
+        var settings = ProcessSettingsParser.Parse(_config, targetProcess.ProcessName, _logger.Log);
         var killMethod = settings.Method ?? DefaultKillMethod;
         var killAction = GetKillAction(killMethod);
 
         if (killAction is null)
         {
-            Logger.Log($"No kill action configured for method '{killMethod}'. Falling back to {DefaultKillMethod}.");
+            _logger.Log($"No kill action configured for method '{killMethod}'. Falling back to {DefaultKillMethod}.");
             killAction = _killActions[DefaultKillMethod];
         }
 
-        Logger.Log($"{targetProcess.ProcessName} -> {killMethod}");
+        _logger.Log($"{targetProcess.ProcessName} -> {killMethod}");
 
         killAction.Invoke(targetWindow, settings.ClickPosition ?? DefaultClickPosition);
     }
@@ -107,7 +108,7 @@ internal class WindowCloser
             AttachThreadInput(targetWindow);
             SetForegroundWindow(targetWindow);
 
-            Thread.Sleep(50);
+            Thread.Sleep(InputSettleDelay);
 
             return IsForeground(targetWindow);
         }
@@ -147,18 +148,18 @@ internal class WindowCloser
             }
 
             var inputs = new INPUT[2];
-            
+
             // Mouse down
             inputs[0].type = INPUT_MOUSE;
             inputs[0].U.mi.dwFlags = MOUSEEVENTF_LEFTDOWN;
-            
+
             // Mouse up
             inputs[1].type = INPUT_MOUSE;
             inputs[1].U.mi.dwFlags = MOUSEEVENTF_LEFTUP;
-            
+
             _ = SendInput(2, inputs, INPUT.Size);
-            
-            Thread.Sleep(50);
+
+            Thread.Sleep(InputSettleDelay);
 
             return IsForeground(targetWindow);
         }
@@ -181,7 +182,7 @@ internal class WindowCloser
                 return true;
             }
 
-            Thread.Sleep(10);
+            Thread.Sleep(CursorPollInterval);
         }
 
         return false;
@@ -191,7 +192,7 @@ internal class WindowCloser
     {
         if (TrySetForegroundWindow(targetWindow, clickPosition))
         {
-            Thread.Sleep(50);
+            Thread.Sleep(InputSettleDelay);
 
             if (modifierKeyCodes.Length != 0)
             {
@@ -204,7 +205,7 @@ internal class WindowCloser
         }
         else
         {
-            Logger.Log($"Failed to set foreground window for {targetWindow}");
+            _logger.Log($"Failed to set foreground window for {targetWindow}");
         }
     }
 

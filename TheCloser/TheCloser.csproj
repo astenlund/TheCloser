@@ -15,6 +15,7 @@
     <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="9.0.0" />
   </ItemGroup>
   <ItemGroup>
+    <!-- Referenced only so TheCloser.Daemon.exe lands in this project's output directory, letting dev runs auto-start the daemon. -->
     <ProjectReference Include="..\TheCloser.Daemon\TheCloser.Daemon.csproj" />
     <ProjectReference Include="..\TheCloser.Shared\TheCloser.Shared.csproj" />
   </ItemGroup>
