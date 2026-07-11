@@ -42,6 +42,20 @@ consult `BUGS_HISTORY.md`.
 
 ## Open
 
+### Invocation dead while an elevated window is active (UIPI filters the AHK hook)
+
+Reported: 2026-07-11. Status: diagnosed; remedy is an environment decision, not a code change.
+
+**Symptom:** pressing the bound mouse button while an elevated app (tested: Task Manager) holds focus does nothing, regardless of what is hovered.
+
+**Diagnosis (2026-07-11):** the app never runs; the log records zero invocations for these presses. Discrimination test: with Task Manager focused, both hovering Task Manager itself AND hovering an unelevated Chrome window left the log silent, so the filtering keys off the *active* window's integrity, not the hovered target's. Root cause is UIPI: low-level input hooks of unelevated processes (the user's AutoHotkey, confirmed unelevated) receive no input while an elevated window is active; this is AutoHotkey's documented administrative-window limitation. Nothing in TheCloser's ladder ever executes, so nothing in this repo can fix it.
+
+**Remedy options (user decision):** (1) AutoHotkey's UI Access launch mode (signed UIA binary; hooks work over elevated windows, everything stays unelevated; closing the elevated window itself remains impossible under UIPI); (2) AHK elevated via a logon scheduled task with highest privileges (TheCloser inherits elevation and could then also close elevated windows; whole hotkey surface runs as admin); (3) accept, with the workaround of clicking the target first to de-focus the admin app.
+
+**Follow-up once remedied:** the elevated-foreground-owner case is untested ladder territory. Expect `AttachThreadInput to the foreground owner failed (error 5)` (UIPI blocks attaching to higher integrity); verify whether native activation or the click fallback carries it, and capture the trace here.
+
+**Requires:** user decision on AHK elevation posture (UI Access vs elevated scheduled task vs accept).
+
 ### Test hygiene: stray GUID-named log files in %TEMP%
 
 Reported: 2026-07-10. Status: open (minor).
