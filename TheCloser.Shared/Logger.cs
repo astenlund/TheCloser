@@ -5,10 +5,12 @@ public class Logger
     private const long MaxLogSizeBytes = 1024 * 1024;
 
     private readonly string _logPath;
+    private readonly Func<DateTime> _utcNow;
 
-    public Logger(string appName)
+    public Logger(string appName, Func<DateTime>? utcNow = null)
     {
         _logPath = Path.Combine(Path.GetTempPath(), appName + ".log");
+        _utcNow = utcNow ?? (() => DateTime.UtcNow);
 
         RotateIfTooLarge();
     }
@@ -20,7 +22,8 @@ public class Logger
             using var stream = new FileStream(_logPath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite);
             using var writer = new StreamWriter(stream);
 
-            writer.WriteLine(msg);
+            // Empty messages are visual separators between invocations; a timestamp prefix would defeat that.
+            writer.WriteLine(string.IsNullOrEmpty(msg) ? msg : $"{_utcNow():O} {msg}");
         }
         catch
         {

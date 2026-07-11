@@ -56,10 +56,10 @@ TheCloser is a Windows utility that closes windows/tabs under the mouse cursor. 
 - `SharedState.cs`: memory-mapped file accessor (throttle tick at offset 0; repair flag at offset 8; saved timeout at offset 12). Write discipline: the saved value is committed before the flag, the reader checks the flag before the value, and clearing touches only the flag
 - `ForegroundLockTimeout.cs`: the SystemParametersInfo get/disable/restore wrapper
 - `TimeoutRepair.cs` / `CrashRepair.cs` / `ForegroundLockSuppression.cs`: the crash-repair protocol pieces (restore-then-clear with clear-only-on-success; the daemon's acquire-and-repair; the app's disable/restore scope around SetForegroundWindow), each unit-testable via injectable restore/tryGet/disable delegates
-- `Logger.cs`: writes to `%TEMP%\TheCloser*.log`; contention-tolerant, rotates to `.log.old` above 1 MB, never throws
+- `Logger.cs`: writes to `%TEMP%\TheCloser*.log`; every non-empty line gets a UTC round-trip timestamp prefix (empty lines are unprefixed separators; clock injectable via optional constructor delegate); contention-tolerant, rotates to `.log.old` above 1 MB, never throws
 
 ### TheCloser.Tests
-- xUnit tests for `ProcessSettingsParser`, `SharedState` (including cross-handle visibility), `TimeoutRepair`, `CrashRepair`, `ForegroundLockSuppression`, `WindowCloser` kill-method resolution, and `Logger` rotation/append
+- xUnit tests for `ProcessSettingsParser`, `SharedState` (including cross-handle visibility), `TimeoutRepair`, `CrashRepair`, `ForegroundLockSuppression`, `WindowCloser` kill-method resolution, and `Logger` rotation/append/timestamping
 - Kernel objects and log files use unique GUID-suffixed names per test (via the `TestNames` helper), so tests never collide with a live daemon or each other; the repair-protocol tests inject tryGet/disable/restore delegates and never touch the real SystemParametersInfo setting
 
 ## Window Closing Methods
@@ -80,7 +80,7 @@ Known bugs, quick wins, feature ideas, and design patterns are tracked in the `.
 2. **Foreground Window Handling**: Multiple strategies including SetForegroundWindow, AttachThreadInput, and clicking on title bar as fallback, implemented as the escalation ladder in `ForegroundActivator`. The system-wide foreground lock timeout is disabled around SetForegroundWindow and restored afterwards (the `ForegroundLockSuppression` scope); a repair record in the memory-mapped file plus the daemon watchdog and the app's startup repair heal the setting if the process is killed mid-operation
 3. **Inter-Process Communication**: A single memory-mapped file (pinned by the daemon) shares the throttle tick and the timeout repair record between main app and daemon
 4. **Native AOT**: Compiled with Native AOT for faster startup and smaller memory footprint
-5. **Logging**: Debug logs written to temp directory for troubleshooting
+5. **Logging**: Timestamped debug logs written to temp directory for troubleshooting
 6. **Accepted residual risk**: the timeout repair record only survives an app crash while a live daemon pins the memory-mapped file. If the daemon is dead (or on a first run where the 1s daemon wait timed out), a kill inside the sub-second disable window strands the foreground lock timeout at 0 until reboot. Gating the SPI manipulation on a confirmed daemon pin is an explicit anti-goal
 
 ## Backlogs and indexes

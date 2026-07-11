@@ -76,8 +76,8 @@ public sealed class LoggerTests : IDisposable
 
         // Assert
         var lines = File.ReadAllLines(_logPath);
-        Assert.Contains("line one", lines);
-        Assert.Contains("line two", lines);
+        Assert.Contains(lines, line => line.EndsWith("line one"));
+        Assert.Contains(lines, line => line.EndsWith("line two"));
     }
 
     [Fact]
@@ -92,5 +92,34 @@ public sealed class LoggerTests : IDisposable
 
         // Assert
         Assert.Null(exception);
+    }
+
+    [Fact]
+    public void Log_NonEmptyMessage_PrefixesUtcTimestamp()
+    {
+        // Arrange
+        var fixedTime = new DateTime(2026, 7, 11, 12, 34, 56, DateTimeKind.Utc);
+        var logger = new Logger(_appName, () => fixedTime);
+
+        // Act
+        logger.Log("hello");
+
+        // Assert
+        var line = Assert.Single(File.ReadAllLines(_logPath));
+        Assert.Equal($"{fixedTime:O} hello", line);
+    }
+
+    [Fact]
+    public void Log_EmptyMessage_WritesBareSeparatorLine()
+    {
+        // Arrange
+        var logger = new Logger(_appName, () => new DateTime(2026, 7, 11, 12, 34, 56, DateTimeKind.Utc));
+
+        // Act
+        logger.Log("");
+
+        // Assert
+        var line = Assert.Single(File.ReadAllLines(_logPath));
+        Assert.Equal(string.Empty, line);
     }
 }

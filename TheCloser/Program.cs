@@ -70,7 +70,6 @@ public static class Program
 
     private static void LogEarlyExit(string reason)
     {
-        Logger.Log($"Timestamp: {DateTime.UtcNow:O}");
         Logger.Log(reason);
         Logger.Log("");
     }
