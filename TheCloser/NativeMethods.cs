@@ -15,6 +15,9 @@ internal static class NativeMethods
     public const uint MOUSEEVENTF_LEFTDOWN = 0x0002;
     public const uint MOUSEEVENTF_LEFTUP = 0x0004;
     public const uint INPUT_MOUSE = 0;
+    public const int VK_MBUTTON = 0x04;
+    public const int VK_XBUTTON1 = 0x05;
+    public const int VK_XBUTTON2 = 0x06;
 
     public enum WindowNotification : uint
     {
@@ -69,6 +72,12 @@ internal static class NativeMethods
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
+
+    /// <summary>
+    ///     Returns a negative value (high bit set) while the key or mouse button is currently down.
+    /// </summary>
+    [DllImport("user32.dll")]
+    public static extern short GetAsyncKeyState(int vKey);
 
     [DllImport("kernel32.dll")]
     public static extern uint GetCurrentThreadId();

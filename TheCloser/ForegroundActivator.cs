@@ -16,10 +16,12 @@ internal class ForegroundActivator
     private const int TitleBarClickOffsetX = 10;
     private const int TitleBarClickOffsetY = 20;
     private const int CursorMoveRetries = 5;
+    private const int TriggerButtonReleaseRetries = 30;
 
     internal static readonly TimeSpan InputSettleDelay = TimeSpan.FromMilliseconds(50);
 
-    private static readonly TimeSpan CursorPollInterval = TimeSpan.FromMilliseconds(10);
+    private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(10);
+    private static readonly int[] TriggerButtonVirtualKeys = [VK_MBUTTON, VK_XBUTTON1, VK_XBUTTON2];
 
     private readonly SharedState _sharedState;
     private readonly Logger _logger;
@@ -46,6 +48,8 @@ internal class ForegroundActivator
             return true;
         }
 
+        WaitForTriggerButtonRelease();
+
         if (TryActivateNatively(rootWindow))
         {
             _logger.Log("Foreground: native activation of the root window succeeded.");
@@ -61,6 +65,26 @@ internal class ForegroundActivator
         }
 
         return false;
+    }
+
+    // The app is invoked from a mouse button binding, so an input attach can race the physical
+    // release of that button: AttachThreadInput resynchronizes key state between the attached
+    // threads, and a release in flight during that window can be lost, leaving the button stuck
+    // down system-wide (observed 2026-07-11 with XBUTTON2 under an AutoHotkey binding, which then
+    // swallowed every mouse click). Wait out the release before any rung that attaches or clicks.
+    private void WaitForTriggerButtonRelease()
+    {
+        for (var attempts = 0; attempts < TriggerButtonReleaseRetries; attempts++)
+        {
+            if (TriggerButtonVirtualKeys.All(vk => GetAsyncKeyState(vk) >= 0))
+            {
+                return;
+            }
+
+            Thread.Sleep(PollInterval);
+        }
+
+        _logger.Log("Proceeding with a trigger mouse button still down after the release wait.");
     }
 
     private static bool IsForeground(IntPtr targetWindow)
@@ -90,13 +114,12 @@ internal class ForegroundActivator
             {
                 _logger.Log("SetForegroundWindow returned false.");
             }
-
-            Thread.Sleep(InputSettleDelay);
-
-            return IsForeground(targetWindow);
         }
         finally
         {
+            // Detach before the settle wait: the attaches are only needed around the
+            // SetForegroundWindow call, and every attached millisecond widens the window in which
+            // the key-state resync can swallow in-flight input (see WaitForTriggerButtonRelease).
             DetachThreadInput(targetWindow);
 
             if (attachedToForegroundOwner)
@@ -104,6 +127,10 @@ internal class ForegroundActivator
                 DetachThreadInput(foregroundWindow);
             }
         }
+
+        Thread.Sleep(InputSettleDelay);
+
+        return IsForeground(targetWindow);
     }
 
     // Foreground rights belong to the thread that received the user's last input (the current
@@ -201,7 +228,7 @@ internal class ForegroundActivator
                 return true;
             }
 
-            Thread.Sleep(CursorPollInterval);
+            Thread.Sleep(PollInterval);
         }
 
         return false;
