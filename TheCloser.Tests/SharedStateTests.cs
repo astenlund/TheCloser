@@ -86,4 +86,33 @@ public class SharedStateTests
         // Assert
         Assert.False(pending);
     }
+
+    [Fact]
+    public void WriteThrottleTick_LeavesAPendingRepairRecordIntact()
+    {
+        // Arrange
+        using var state = new SharedState(TestNames.UniqueMapName());
+        state.SetTimeoutRepair(200000u);
+
+        // Act
+        state.WriteThrottleTick(long.MaxValue);
+
+        // Assert
+        Assert.True(state.TryReadTimeoutRepair(out var saved));
+        Assert.Equal(200000u, saved);
+    }
+
+    [Fact]
+    public void SetTimeoutRepair_LeavesTheThrottleTickIntact()
+    {
+        // Arrange
+        using var state = new SharedState(TestNames.UniqueMapName());
+        state.WriteThrottleTick(long.MaxValue);
+
+        // Act
+        state.SetTimeoutRepair(uint.MaxValue);
+
+        // Assert
+        Assert.Equal(long.MaxValue, state.ReadThrottleTick());
+    }
 }
