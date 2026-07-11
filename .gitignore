@@ -244,3 +244,6 @@ ModelManifest.xml
 
 # Claude Code local (per-machine) settings
 .claude/settings.local.json
+
+# Machine-local deploy settings (see deploy.settings.example.psd1)
+deploy.settings.psd1

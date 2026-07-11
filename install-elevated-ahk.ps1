@@ -6,10 +6,12 @@
 # Task Manager has focus. An elevated AutoHotkey receives them, and everything it launches
 # (TheCloser included) inherits the elevation, which also lets TheCloser close elevated windows.
 # Run once per machine from an elevated shell; remove any old unelevated autostart by hand.
+# The script defaults to the TheCloser.ahk sitting next to it (deploy.ps1 copies both to the
+# deploy target), so no paths need passing when run from there.
 
 [CmdletBinding()]
 param(
-    [string] $AhkScriptPath = 'C:\Sync\Personal\3. Resources\Bin\TheCloser\TheCloser.ahk',
+    [string] $AhkScriptPath = (Join-Path $PSScriptRoot 'TheCloser.ahk'),
     [string] $AhkExePath = 'C:\Program Files\AutoHotkey\AutoHotkeyU64.exe',
     [string] $TaskName = 'TheCloser AutoHotkey (elevated)',
     [switch] $StartNow

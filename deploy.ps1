@@ -1,5 +1,15 @@
 $ErrorActionPreference = 'Stop'
 
+# Machine-local paths live in deploy.settings.psd1 (git-ignored); the example file documents the shape.
+$SettingsPath = Join-Path $PSScriptRoot 'deploy.settings.psd1'
+
+if (!(Test-Path $SettingsPath)) {
+    [Console]::Error.WriteLine("Missing '$SettingsPath'. Copy deploy.settings.example.psd1 to deploy.settings.psd1 and fill in your paths.")
+    exit 1
+}
+
+$Settings = Import-PowerShellDataFile $SettingsPath
+
 # Native AOT's ilcompiler locates the VC++ toolchain via vswhere.exe, which is not on PATH in shells without the VS developer environment.
 $VsInstallerDir = 'C:\Program Files (x86)\Microsoft Visual Studio\Installer'
 if ($env:PATH -notlike "*$VsInstallerDir*") {
@@ -16,7 +26,7 @@ if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
 }
 
-$Destination = 'C:\Sync\Personal\3. Resources\Bin\TheCloser\'
+$Destination = $Settings.Destination
 
 if (!(Test-Path $Destination)) {
     New-Item $Destination -ItemType Directory -Force | Out-Null
