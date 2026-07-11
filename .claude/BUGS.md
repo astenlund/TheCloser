@@ -56,6 +56,7 @@ Close the review's test coverage gaps in the same sweep (most valuable first):
 - Logger rotation at exactly 1 MiB: production rotates only on strictly-greater; tests cover 16 bytes and threshold+1 but not the boundary, which must NOT rotate.
 - `ResolveKillMethodName("")`: empty string takes a different path than `null` (`?? DefaultKillMethod` does not apply; it falls to `ContainsKey("")`). Also six of the nine documented method names are untested; a theory over the full documented list pins the dictionary against typos and README drift.
 - `ProcessSettingsParser`: numeric ClickPosition `"1"` silently parses to `Center` (the `Enum.IsDefined` guard only rejects out-of-range numerics); precedence when both simple value and `Method` key exist is unpinned; invalid ClickPosition with null `logWarning` (cheap NRE guard).
+- While in LoggerTests: retire the duplicated fixed-UTC-timestamp construction (a named variable in `Log_NonEmptyMessage_PrefixesUtcTimestamp`, an inline literal in `Log_EmptyMessage_WritesBareSeparatorLine`) into a shared fixture field.
 
 **Requires:** none.
 
@@ -79,7 +80,7 @@ Reported: 2026-07-10. Status: open.
 **Next steps (require mouse; deferred):**
 
 1. Re-verify the bug under the fixed binary (deployed 2026-07-10). It may have been entirely a symptom of the stranded timeout=0.
-2. Diagnostics deployed 2026-07-11: per-rung ladder logging (ForegroundActivator.TryActivate), timestamps on every log line (Logger.Log), and AttachThreadInput failure logging (ForegroundActivator.TryActivateNatively). After the next failing occurrence, the log will state exactly which rung claimed success, whether the attach failed, and when, correlatable with the interactive attempt.
+2. Diagnostics deployed 2026-07-11: per-rung ladder logging (ForegroundActivator.TryActivate), timestamps on every log line (Logger.Log), and AttachThreadInput failure logging (ForegroundActivator.TryActivateNatively). After the next failing occurrence, the log will state exactly which rung claimed success, whether the attach failed, and when, correlatable with the interactive attempt. Reading the trace: `AttachThreadInput failed (error 0)` means the call returned false with no OS error set (same-thread attach or already attached), not a real fault.
 3. If the bug survives: try SetFocus on the target while AttachThreadInput is active (the classic remedy absent from this codebase; the place is ForegroundActivator.TryActivateNatively), and only then consider attaching to the foreground owner's thread instead of the target's.
 4. Prior art: a SwitchToThisWindow() fallback was added and reverted (04cbeb7 reverted b971d68); re-check the revert motivation before reintroducing.
 
