@@ -66,6 +66,14 @@ Reported: 2026-07-10. Status: open.
 
 **Symptom:** invoking TheCloser over a Chrome window while some non-Chrome process is in the foreground fails to activate the Chrome window, so the CTRL-W keypress never reaches it (or lands elsewhere). Activation works when Chrome itself already holds the foreground.
 
+**Evidence gathered 2026-07-11 (interactive re-verification under the fixed binary, per-rung diagnostics live):**
+
+- Two Chrome invocations at 16:04. With Chrome itself foreground: rung 1 short-circuited (already foreground), no information. With explorer.exe foreground: both native rungs ran and failed honestly (`SetForegroundWindow returned false.` for the target and then the root; no AttachThreadInput failure line, so the target-thread attach succeeded), then the title bar click fallback engaged for the first time on record and succeeded. Net behavior: the hovered tab closed correctly both times.
+- SetForegroundWindow was denied *while the lock timeout was suppressed*, confirming the 2026-07-11 review counterpoint: another foreground-denial rule blocks the call (most plausibly the input lock: the user's last physical input went to explorer), and attaching to the target's thread confers no rights because the target does not hold them either. This promotes the foreground-owner-thread attach from candidate to primary fix and demotes SetFocus (which addresses "activation succeeded but focus never landed", not outright denial) to fallback.
+- Structural note correction: two SetForegroundWindow-false lines means target != root on that invocation, so WindowFromPoint DID return a Chrome child HWND distinct from the root. The earlier "Chrome exposes no input-visible child HWNDs on this machine" observation does not hold universally; the hierarchy varies by hover point.
+- Tab-strip hazard downgraded: the default Left click point (left+10, top+20) verified to land on the title bar above the tab click area; the click fallback activated the window without switching tabs and the hovered tab closed, not the leftmost. Hazard retired for this geometry.
+- Consequence: the bug is currently *masked* for the user (the click fallback saves every invocation), but native activation remains broken and the fallback costs ~200ms plus a cursor round-trip per invocation.
+
 **Evidence gathered 2026-07-10 (adversarial review):**
 
 - The deployed log (June 20 to July 10, ~200+ `chrome -> CTRL-W` invocations) contains ZERO "Failed to set foreground" lines for any process. That line only fires when all ladder rungs fail, so on every failing invocation some rung returned true and the click fallback was never attempted.
@@ -79,10 +87,12 @@ Reported: 2026-07-10. Status: open.
 
 **Next steps (require mouse; deferred):**
 
-1. Re-verify the bug under the fixed binary (deployed 2026-07-10). It may have been entirely a symptom of the stranded timeout=0.
-2. Diagnostics deployed 2026-07-11: per-rung ladder logging (ForegroundActivator.TryActivate), timestamps on every log line (Logger.Log), and AttachThreadInput failure logging (ForegroundActivator.TryActivateNatively). After the next failing occurrence, the log will state exactly which rung claimed success, whether the attach failed, and when, correlatable with the interactive attempt. Reading the trace: `AttachThreadInput failed (error 0)` means the call returned false with no OS error set (same-thread attach or already attached), not a real fault.
-3. If the bug survives: try SetFocus on the target while AttachThreadInput is active (the classic remedy absent from this codebase; the place is ForegroundActivator.TryActivateNatively), and only then consider attaching to the foreground owner's thread instead of the target's.
-4. Prior art: a SwitchToThisWindow() fallback was added and reverted (04cbeb7 reverted b971d68); re-check the revert motivation before reintroducing.
+1. ~~Re-verify the bug under the fixed binary (deployed 2026-07-10).~~ Done 2026-07-11: native activation still fails with explorer foreground; the click fallback masks it (see evidence above).
+2. Fix implemented 2026-07-11 (6fbbbc3, not yet deployed): ForegroundActivator.TryActivateNatively now also attaches to the current foreground owner's thread around SetForegroundWindow, borrowing the input-queue state that holds foreground rights. Deploy, then re-run the verification below; success reads as `Foreground: native activation of the target window succeeded.` with no click-fallback line.
+3. If SetForegroundWindow still returns false with the owner attach in place (the trace will show `AttachThreadInput to the foreground owner failed` if the attach itself failed): try SetFocus on the target while the attaches are active, addressing focus delivery rather than activation permission.
+4. Diagnostics reference: per-rung ladder logging (ForegroundActivator.TryActivate), timestamps on every log line (Logger.Log), AttachThreadInput failure logging including the owner attach (ForegroundActivator.TryActivateNatively / TryAttachToForegroundOwner). Reading the trace: `AttachThreadInput failed (error 0)` means the call returned false with no OS error set (same-thread attach or already attached), not a real fault.
+5. Prior art: a SwitchToThisWindow() fallback was added and reverted (04cbeb7 reverted b971d68); the revert commit records no motivation, so treat it as untried rather than rejected if the ladder ever needs another rung.
+6. Testability debt: the owner-attach ordering inside TryActivateNatively is untestable while ForegroundActivator hard-wires NativeMethods statics; if the fix verifies, consider extending the "WindowCloser hard-wires ForegroundActivator and InputSimulator" quick win to injectable delegates here so the rung order and attach discipline can be pinned.
 
 **Verification once fixed:** with Notepad (or any non-Chrome app) focused, invoke TheCloser over a background Chrome window; the hovered Chrome tab should close. Repeat with Chrome minimized-then-restored and with multiple Chrome profiles/windows.
 
