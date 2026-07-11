@@ -27,3 +27,8 @@ $Tfm = ([xml](Get-Content (Join-Path $PSScriptRoot 'Directory.Build.props'))).Pr
 
 Copy-Item (Join-Path $PSScriptRoot "TheCloser\bin\Release\$Tfm\win-x64\publish\TheCloser.exe") $Destination -Force -Verbose
 Copy-Item (Join-Path $PSScriptRoot "TheCloser.Daemon\bin\Release\$Tfm\win-x64\publish\TheCloser.Daemon.exe") $Destination -Force -Verbose
+
+# The invocation layer ships alongside the binaries: the AHK trigger script and the per-machine
+# elevated-task installer travel to other machines through the synced Bin folder.
+Copy-Item (Join-Path $PSScriptRoot 'TheCloser.ahk') $Destination -Force -Verbose
+Copy-Item (Join-Path $PSScriptRoot 'install-elevated-ahk.ps1') $Destination -Force -Verbose

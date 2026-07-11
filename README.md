@@ -18,6 +18,12 @@ Invoking the executable closes the window or tab under the cursor and exits. A s
 - Windows Message: WM_CLOSE
 - Windows Message: WM_QUIT (hazardous: kills the target's message loop, bypassing any save/confirm-on-close handling)
 
+## Invocation binding
+
+The app is designed to be bound to a mouse button. The reference binding is `TheCloser.ahk` (AutoHotkey v1), which launches the executable on Mouse5 (XButton2); `deploy.ps1` copies it next to the binaries.
+
+AutoHotkey must run **elevated** for the binding to work while an elevated window (e.g. Task Manager) is active: UIPI silently drops low-level hook events for unelevated processes whenever the active window has higher integrity, so an unelevated AutoHotkey never sees the button press in that state. Elevation also propagates to TheCloser, which is what allows it to close elevated windows at all (message posting and input injection across the integrity boundary are otherwise blocked). Run `install-elevated-ahk.ps1` once per machine from an elevated shell to register a logon scheduled task that starts the script elevated, and remove any old unelevated autostart.
+
 ## Configuration
 
 Applications can be configured with either a simple method string or an object with method and click position settings. The configuration is read from an appsettings.json file in the directory of the deployed executable and is maintained by hand there; the repository carries no appsettings.json.
