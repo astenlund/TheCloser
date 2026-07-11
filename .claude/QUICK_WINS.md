@@ -60,6 +60,14 @@ Same debt one level down: `ForegroundActivator` calls `NativeMethods` statics di
 
 ## Hygiene
 
+### Scrub personal information from all git history
+
+The current tips are clean (machine-local paths moved to the git-ignored `deploy.settings.psd1` in the commit titled "refactor(setup): move personal paths to git-ignored psd1 settings"), but the *history* still carries personal information in old blobs: the personal deploy target path lived hardcoded in `deploy.ps1` from its inception until that refactor, appeared in `CLAUDE.md` until the follow-up docs commit, briefly in `TheCloser.ahk` and `install-elevated-ahk.ps1` between their introduction and the same refactor, and in the (since-deleted) implementation plan for the target-rung removal. Do not trust this inventory as complete: start by grepping every revision, e.g. `git grep -I <needle> $(git rev-list --all)`, using the deploy target string from the local `deploy.settings.psd1` as the needle, then broaden to other candidate needles (user name fragments, machine-specific folders) and inventory what surfaces.
+
+Preferred shape: `git filter-repo --replace-text` mapping each personal string to the placeholder already used in `deploy.settings.example.psd1` (`C:\Path\To\Bin\TheCloser`), plus `--replace-message` if any commit message turns out to carry a needle. The stated requirement is that **each rewritten commit must still make sense in isolation**: after replacement, historical `deploy.ps1` reads as a placeholder hardcode that the psd1 refactor then externalizes, which is coherent; spot-check the refactor commit and the ahk/installer introduction commit afterwards to confirm.
+
+Decision points to settle with the user before running: whether commit author/committer identity is in scope (currently assumed NOT; it is deliberate); the exact needle list. Operational notes: filter-repo rewrites every SHA, so this is gated on user coordination: a user-driven force-push plus re-clone/reset on every machine with a checkout, at a moment when no other work is in flight. Re-verify afterwards with the same all-revisions grep returning empty. Side effect to flag when done: every commit SHA referenced in the `.claude` docs (BUGS_HISTORY entries, this file's history) goes stale; sweep and update them as part of the same change, as was done once before for the same reason (see the "update rebased commit SHAs" commit).
+
 ### Analyzer enforcement
 
 No StyleCop.Analyzers package, no `TreatWarningsAsErrors`/`EnforceCodeStyleInBuild` in a `Directory.Build.props`, and the `.editorconfig` carries only two C# rules. The code complies with conventions by discipline only; adding enforcement locks it in.
