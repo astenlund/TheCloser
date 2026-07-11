@@ -44,7 +44,7 @@ public static class Program
             var elapsedSinceLastRun = Environment.TickCount64 - sharedState.ReadThrottleTick();
 
             // Negative can only mean a stale-format (pre-tick-count) or foreign value; treat it as not throttled.
-            if (elapsedSinceLastRun >= 0 && elapsedSinceLastRun < StartupIntervalThresholdMs)
+            if (elapsedSinceLastRun is >= 0 and < StartupIntervalThresholdMs)
             {
                 LogEarlyExit($"The previous instance was started less than {StartupIntervalThresholdMs}ms ago. Exiting...");
 
