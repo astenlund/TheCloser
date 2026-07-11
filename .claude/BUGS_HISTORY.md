@@ -20,6 +20,21 @@ archaeological.
 
 ## Entries
 
+### System-wide stuck XBUTTON2 after input attach; all mouse clicks dead
+
+Reported: 2026-07-11. Mitigated: 2026-07-11 in 0b2affe.
+
+**Symptom:** immediately after an `explorer -> CTRL-W` invocation (native activation, 18:11:21), mouse clicks stopped registering system-wide (taskbar included) while the keyboard kept working. Novel behavior, same session as the owner-attach deployment.
+
+**Diagnosis:** `GetAsyncKeyState(VK_XBUTTON2)` read -32768: the OS held mouse button 5, the app's AutoHotkey invocation binding, as pressed. The physical release was lost, most plausibly because AttachThreadInput resynchronizes key state between attached threads and the invocation had just attached to explorer's own input thread (as target and likely foreground owner simultaneously) inside the ~70ms window where the release was in flight. AutoHotkey's mouse hook, believing XBUTTON2 was still held, then poisoned every subsequent click. Earlier same-day owner-attach invocations (Chrome targets) were harmless; the shell-as-target case is what lined up the race.
+
+**Immediate remedy (works if this ever recurs):** inject the missing release, then re-probe:
+`mouse_event(0x0100, 0, 0, 2, 0)` (MOUSEEVENTF_XUP, mouseData = XBUTTON2), e.g. via Add-Type P/Invoke in PowerShell; `GetAsyncKeyState(0x06)` should return 0 afterwards.
+
+**Mitigations (0b2affe):** ForegroundActivator waits for middle/X1/X2 release (GetAsyncKeyState poll, 10ms interval, 300ms cap, logged on timeout) before any rung that attaches or clicks, and TryActivateNatively detaches both threads immediately after SetForegroundWindow instead of holding the attaches through the 50ms settle wait.
+
+**Residual risk, accepted:** the underlying race is not reproducible on demand, so the mitigations shrink the exposure window (release wait removes the common trigger; attach window cut ~70ms to ~1ms) rather than provably close it. Untestable in-process while ForegroundActivator hard-wires NativeMethods statics (see the injectability quick win).
+
 ### Chrome window activation fails when a non-Chrome process holds the foreground
 
 Reported: 2026-07-10. Fixed: 2026-07-11 in 6fbbbc3 (deployed same day).
