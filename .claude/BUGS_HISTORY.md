@@ -20,6 +20,20 @@ archaeological.
 
 ## Entries
 
+### Invocation dead while an elevated window is active (UIPI filters the AHK hook)
+
+Reported: 2026-07-11. Fixed: 2026-07-12 (environment change, codified in the repo).
+
+**Symptom:** pressing the bound mouse button while an elevated app (tested: Task Manager) held focus did nothing, regardless of what was hovered; the log recorded zero invocations, so TheCloser never ran.
+
+**Root cause:** UIPI. Low-level input hooks of unelevated processes receive no input while an elevated window is active (AutoHotkey's documented administrative-window limitation), and the user's AutoHotkey ran unelevated. The discrimination test pinned the rule to the *active* window's integrity, not the hovered target's: with Task Manager focused, hovering Task Manager AND hovering unelevated Chrome both left the log silent.
+
+**Fix:** run the invocation layer elevated. `install-elevated-ahk.ps1` (repo root, deployed to the Bin folder by `deploy.ps1`) registers a logon scheduled task running `TheCloser.ahk` with highest privileges, once per machine; TheCloser inherits the elevation, which is also what allows closing elevated windows at all (UIPI blocks every kill method across the integrity boundary). `Taskmgr -> SC_CLOSE` added to the deployed appsettings.json. Both invocation-layer files are repo-tracked and self-locating; machine-local paths live in the git-ignored `deploy.settings.psd1`.
+
+**Verified 2026-07-12:** M5 over Task Manager closes it (`Taskmgr -> SC_CLOSE`, single log line, no ladder: message posting needs no activation at same integrity). With Task Manager focused, M5 over a background Chrome viewport closes its active tab via native root activation, and the predicted `AttachThreadInput to the foreground owner failed (error 5)` never appeared: elevation removed the integrity barrier, so the elevated-foreground-owner case degenerated to the ordinary one. The stuck-button healer stayed silent (its success mode).
+
+**Durable learning:** UIPI failures in this tool can present at two layers with identical symptoms; the log discriminates. Zero log lines means the invocation layer never fired (hook filtering; fix is environmental). A logged ladder failure means integrity blocking inside activation or delivery (fix is elevation or method choice, e.g. message-based `SC_CLOSE` needs no activation at all).
+
 ### System-wide stuck XBUTTON2 after input attach; all mouse clicks dead
 
 Reported: 2026-07-11. Mitigated: 2026-07-11 in fbd21fb.
