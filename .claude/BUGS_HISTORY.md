@@ -22,7 +22,7 @@ archaeological.
 
 ### System-wide stuck XBUTTON2 after input attach; all mouse clicks dead
 
-Reported: 2026-07-11. Mitigated: 2026-07-11 in 0b2affe.
+Reported: 2026-07-11. Mitigated: 2026-07-11 in fbd21fb.
 
 **Symptom:** immediately after an `explorer -> CTRL-W` invocation (native activation, 18:11:21), mouse clicks stopped registering system-wide (taskbar included) while the keyboard kept working. Novel behavior, same session as the owner-attach deployment.
 
@@ -31,11 +31,11 @@ Reported: 2026-07-11. Mitigated: 2026-07-11 in 0b2affe.
 **Immediate remedy (works if this ever recurs):** inject the missing release, then re-probe:
 `mouse_event(0x0100, 0, 0, 2, 0)` (MOUSEEVENTF_XUP, mouseData = XBUTTON2), e.g. via Add-Type P/Invoke in PowerShell; `GetAsyncKeyState(0x06)` should return 0 afterwards.
 
-**Mitigations:** TryActivateNatively detaches both threads immediately after SetForegroundWindow instead of holding the attaches through the 50ms settle wait (0b2affe, exposure ~70ms to ~1ms). A preventive pre-attach release wait (also 0b2affe) was replaced in 59e0543 by the reactive `TriggerButtonHealer`: the wait cost ~50-100ms of activation latency on every background-target invocation (AutoHotkey fires on M5-*down*, so the finger is still on the button when activation starts), whereas the healer costs nothing up front. After a close that performed an input attach, the app releases the single-instance guard mutex and lingers up to 2s polling the middle/X buttons; a genuine hold clears itself on release, while a stranded state reads down forever, so anything still down at the deadline gets its release injected (and logged). Unit-tested via injected probe/inject/sleep delegates.
+**Mitigations:** TryActivateNatively detaches both threads immediately after SetForegroundWindow instead of holding the attaches through the 50ms settle wait (fbd21fb, exposure ~70ms to ~1ms). A preventive pre-attach release wait (also fbd21fb) was replaced in 5cd2667 by the reactive `TriggerButtonHealer`: the wait cost ~50-100ms of activation latency on every background-target invocation (AutoHotkey fires on M5-*down*, so the finger is still on the button when activation starts), whereas the healer costs nothing up front. After a close that performed an input attach, the app releases the single-instance guard mutex and lingers up to 2s polling the middle/X buttons; a genuine hold clears itself on release, while a stranded state reads down forever, so anything still down at the deadline gets its release injected (and logged). Unit-tested via injected probe/inject/sleep delegates.
 
 **Residual risk, accepted:** the underlying race is not reproducible on demand; the narrow attach window plus the self-heal bound the damage (~2s of dead mouse, auto-recovered) rather than provably eliminate it. Deliberate anti-goal: no daemon backstop for the healer; a leak requires the sub-millisecond attach race AND an app death inside the 2s monitor, and the daemon's 5s watchdog tick would heal far slower than the in-app monitor does.
 
-**Contingency (decided 2026-07-11):** if the symptom recurs and the healer fails to clear it, either debug the escape route further (the healer's log line plus the manual remedy above are the entry points) or fall back to the preventive pre-attach release wait exactly as it existed in 0b2affe, accepting its ~50-100ms activation latency on background-target invocations.
+**Contingency (decided 2026-07-11):** if the symptom recurs and the healer fails to clear it, either debug the escape route further (the healer's log line plus the manual remedy above are the entry points) or fall back to the preventive pre-attach release wait exactly as it existed in fbd21fb, accepting its ~50-100ms activation latency on background-target invocations.
 
 ### Chrome window activation fails when a non-Chrome process holds the foreground
 
