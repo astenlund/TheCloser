@@ -6,6 +6,8 @@ public sealed class LoggerTests : IDisposable
 {
     private const long RotationThresholdBytes = 1024 * 1024;
 
+    private static readonly DateTime FixedUtcTimestamp = new(2026, 7, 11, 12, 34, 56, DateTimeKind.Utc);
+
     private readonly string _appName = TestNames.UniqueLoggerName();
     private readonly string _logPath;
 
@@ -112,22 +114,21 @@ public sealed class LoggerTests : IDisposable
     public void Log_NonEmptyMessage_PrefixesUtcTimestamp()
     {
         // Arrange
-        var fixedTime = new DateTime(2026, 7, 11, 12, 34, 56, DateTimeKind.Utc);
-        var logger = new Logger(_appName, () => fixedTime);
+        var logger = new Logger(_appName, () => FixedUtcTimestamp);
 
         // Act
         logger.Log("hello");
 
         // Assert
         var line = Assert.Single(File.ReadAllLines(_logPath));
-        Assert.Equal($"{fixedTime:O} hello", line);
+        Assert.Equal($"{FixedUtcTimestamp:O} hello", line);
     }
 
     [Fact]
     public void Log_EmptyMessage_WritesBareSeparatorLine()
     {
         // Arrange
-        var logger = new Logger(_appName, () => new DateTime(2026, 7, 11, 12, 34, 56, DateTimeKind.Utc));
+        var logger = new Logger(_appName, () => FixedUtcTimestamp);
 
         // Act
         logger.Log("");
