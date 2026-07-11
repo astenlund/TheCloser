@@ -2,9 +2,11 @@ using TheCloser.Shared;
 
 namespace TheCloser.Tests;
 
-public class ForegroundLockSuppressionTests
+public sealed class ForegroundLockSuppressionTests : IDisposable
 {
-    private static readonly Logger Logger = new(TestNames.UniqueLoggerName());
+    private readonly TempLogger _tempLogger = new();
+
+    public void Dispose() => _tempLogger.Dispose();
 
     [Fact]
     public void Constructor_NoPendingRecord_PublishesRecordAndDisables()
@@ -14,7 +16,7 @@ public class ForegroundLockSuppressionTests
         var disabled = false;
 
         // Act
-        using var suppression = new ForegroundLockSuppression(state, Logger, TryGetReturning(200000u), () => disabled = true, _ => true);
+        using var suppression = new ForegroundLockSuppression(state, _tempLogger.Logger, TryGetReturning(200000u), () => disabled = true, _ => true);
 
         // Assert
         Assert.True(disabled);
@@ -30,7 +32,7 @@ public class ForegroundLockSuppressionTests
         var disableCalled = false;
 
         // Act
-        using var suppression = new ForegroundLockSuppression(state, Logger, FailingTryGet, () => disableCalled = true, _ => true);
+        using var suppression = new ForegroundLockSuppression(state, _tempLogger.Logger, FailingTryGet, () => disableCalled = true, _ => true);
 
         // Assert
         Assert.False(disableCalled);
@@ -44,7 +46,7 @@ public class ForegroundLockSuppressionTests
         using var state = new SharedState(TestNames.UniqueMapName());
         state.SetTimeoutRepair(200000u);
         var restoreCalled = false;
-        var suppression = new ForegroundLockSuppression(state, Logger, TryGetReturning(0u), () => false, _ => restoreCalled = true);
+        var suppression = new ForegroundLockSuppression(state, _tempLogger.Logger, TryGetReturning(0u), () => false, _ => restoreCalled = true);
 
         // Act
         suppression.Dispose();
@@ -62,7 +64,7 @@ public class ForegroundLockSuppressionTests
         using var state = new SharedState(TestNames.UniqueMapName());
         state.SetTimeoutRepair(200000u);
         var restoreCalled = false;
-        var suppression = new ForegroundLockSuppression(state, Logger, FailingTryGet, () => true, _ => restoreCalled = true);
+        var suppression = new ForegroundLockSuppression(state, _tempLogger.Logger, FailingTryGet, () => true, _ => restoreCalled = true);
 
         // Act
         suppression.Dispose();
@@ -81,7 +83,7 @@ public class ForegroundLockSuppressionTests
         state.SetTimeoutRepair(200000u);
 
         // Act
-        using var suppression = new ForegroundLockSuppression(state, Logger, TryGetReturning(0u), () => true, _ => true);
+        using var suppression = new ForegroundLockSuppression(state, _tempLogger.Logger, TryGetReturning(0u), () => true, _ => true);
 
         // Assert
         Assert.True(state.TryReadTimeoutRepair(out var saved));
@@ -95,7 +97,7 @@ public class ForegroundLockSuppressionTests
         using var state = new SharedState(TestNames.UniqueMapName());
 
         // Act
-        using var suppression = new ForegroundLockSuppression(state, Logger, TryGetReturning(200000u), () => false, _ => true);
+        using var suppression = new ForegroundLockSuppression(state, _tempLogger.Logger, TryGetReturning(200000u), () => false, _ => true);
 
         // Assert
         Assert.False(state.TryReadTimeoutRepair(out _));
@@ -109,7 +111,7 @@ public class ForegroundLockSuppressionTests
         state.SetTimeoutRepair(200000u);
 
         // Act
-        using var suppression = new ForegroundLockSuppression(state, Logger, TryGetReturning(0u), () => false, _ => true);
+        using var suppression = new ForegroundLockSuppression(state, _tempLogger.Logger, TryGetReturning(0u), () => false, _ => true);
 
         // Assert
         Assert.True(state.TryReadTimeoutRepair(out var saved));
@@ -122,7 +124,7 @@ public class ForegroundLockSuppressionTests
         // Arrange
         using var state = new SharedState(TestNames.UniqueMapName());
         uint restoredValue = 0;
-        var suppression = new ForegroundLockSuppression(state, Logger, TryGetReturning(200000u), () => true, value =>
+        var suppression = new ForegroundLockSuppression(state, _tempLogger.Logger, TryGetReturning(200000u), () => true, value =>
         {
             restoredValue = value;
 
@@ -142,7 +144,7 @@ public class ForegroundLockSuppressionTests
     {
         // Arrange
         using var state = new SharedState(TestNames.UniqueMapName());
-        var suppression = new ForegroundLockSuppression(state, Logger, TryGetReturning(200000u), () => true, _ => false);
+        var suppression = new ForegroundLockSuppression(state, _tempLogger.Logger, TryGetReturning(200000u), () => true, _ => false);
 
         // Act
         suppression.Dispose();
@@ -159,7 +161,7 @@ public class ForegroundLockSuppressionTests
         using var state = new SharedState(TestNames.UniqueMapName());
         state.SetTimeoutRepair(200000u);
         var restoredValue = 0u;
-        var suppression = new ForegroundLockSuppression(state, Logger, TryGetReturning(0u), () => true, value =>
+        var suppression = new ForegroundLockSuppression(state, _tempLogger.Logger, TryGetReturning(0u), () => true, value =>
         {
             restoredValue = value;
 
@@ -180,7 +182,7 @@ public class ForegroundLockSuppressionTests
         // Arrange
         using var state = new SharedState(TestNames.UniqueMapName());
         var restoreCount = 0;
-        var suppression = new ForegroundLockSuppression(state, Logger, TryGetReturning(200000u), () => true, _ =>
+        var suppression = new ForegroundLockSuppression(state, _tempLogger.Logger, TryGetReturning(200000u), () => true, _ =>
         {
             restoreCount++;
 
@@ -201,7 +203,7 @@ public class ForegroundLockSuppressionTests
         // Arrange
         using var state = new SharedState(TestNames.UniqueMapName());
         var restoreCalled = false;
-        var suppression = new ForegroundLockSuppression(state, Logger, TryGetReturning(200000u), () => false, _ => restoreCalled = true);
+        var suppression = new ForegroundLockSuppression(state, _tempLogger.Logger, TryGetReturning(200000u), () => false, _ => restoreCalled = true);
 
         // Act
         suppression.Dispose();
@@ -216,7 +218,7 @@ public class ForegroundLockSuppressionTests
         // Arrange
         using var state = new SharedState(TestNames.UniqueMapName());
         var restoreCalled = false;
-        var suppression = new ForegroundLockSuppression(state, Logger, FailingTryGet, () => true, _ => restoreCalled = true);
+        var suppression = new ForegroundLockSuppression(state, _tempLogger.Logger, FailingTryGet, () => true, _ => restoreCalled = true);
 
         // Act
         suppression.Dispose();

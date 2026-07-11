@@ -11,7 +11,7 @@ public sealed class LoggerTests : IDisposable
 
     public LoggerTests()
     {
-        _logPath = Path.Combine(Path.GetTempPath(), _appName + ".log");
+        _logPath = Logger.GetLogPath(_appName);
     }
 
     // xUnit creates one instance per test and disposes it even when the test fails, so this replaces per-test try/finally cleanup.

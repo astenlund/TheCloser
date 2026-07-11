@@ -9,11 +9,13 @@ public class Logger
 
     public Logger(string appName, Func<DateTime>? utcNow = null)
     {
-        _logPath = Path.Combine(Path.GetTempPath(), appName + ".log");
+        _logPath = GetLogPath(appName);
         _utcNow = utcNow ?? (() => DateTime.UtcNow);
 
         RotateIfTooLarge();
     }
+
+    public static string GetLogPath(string appName) => Path.Combine(Path.GetTempPath(), appName + ".log");
 
     public void Log(string msg)
     {

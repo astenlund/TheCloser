@@ -3,8 +3,17 @@ using TheCloser.Shared;
 
 namespace TheCloser.Tests;
 
-public class WindowCloserTests
+public sealed class WindowCloserTests : IDisposable
 {
+    private readonly TempLogger _tempLogger = new();
+    private readonly SharedState _sharedState = new(TestNames.UniqueMapName());
+
+    public void Dispose()
+    {
+        _sharedState.Dispose();
+        _tempLogger.Dispose();
+    }
+
     [Theory]
     [InlineData(null, "CTRL-W")]
     [InlineData("NO-SUCH-METHOD", "CTRL-W")]
@@ -13,8 +22,7 @@ public class WindowCloserTests
     public void ResolveKillMethodName_ResolvesKnownMethodsCaseInsensitivelyAndFallsBackOtherwise(string? configured, string expected)
     {
         // Arrange
-        using var sharedState = new SharedState(TestNames.UniqueMapName());
-        var closer = new WindowCloser(new ConfigurationBuilder().Build(), sharedState, new Logger(TestNames.UniqueLoggerName()));
+        var closer = CreateCloser();
 
         // Act
         var resolved = closer.ResolveKillMethodName(configured);
@@ -22,4 +30,6 @@ public class WindowCloserTests
         // Assert
         Assert.Equal(expected, resolved);
     }
+
+    private WindowCloser CreateCloser() => new(new ConfigurationBuilder().Build(), _sharedState, _tempLogger.Logger);
 }

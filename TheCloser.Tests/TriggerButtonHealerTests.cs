@@ -1,24 +1,12 @@
-using TheCloser.Shared;
-
 using static TheCloser.NativeMethods;
 
 namespace TheCloser.Tests;
 
 public sealed class TriggerButtonHealerTests : IDisposable
 {
-    private readonly string _loggerName = TestNames.UniqueLoggerName();
-    private readonly Logger _logger;
+    private readonly TempLogger _tempLogger = new();
 
-    public TriggerButtonHealerTests()
-    {
-        _logger = new Logger(_loggerName);
-    }
-
-    public void Dispose()
-    {
-        File.Delete(Path.Combine(Path.GetTempPath(), $"{_loggerName}.log"));
-        File.Delete(Path.Combine(Path.GetTempPath(), $"{_loggerName}.log.old"));
-    }
+    public void Dispose() => _tempLogger.Dispose();
 
     [Fact]
     public void HealStuckButtons_AllButtonsUp_ReturnsWithoutSleepingOrInjecting()
@@ -26,7 +14,7 @@ public sealed class TriggerButtonHealerTests : IDisposable
         // Arrange
         var injected = new List<int>();
         var sleeps = 0;
-        var healer = new TriggerButtonHealer(_logger, _ => false, injected.Add, _ => sleeps++);
+        var healer = new TriggerButtonHealer(_tempLogger.Logger, _ => false, injected.Add, _ => sleeps++);
 
         // Act
         healer.HealStuckButtons();
@@ -42,7 +30,7 @@ public sealed class TriggerButtonHealerTests : IDisposable
         // Arrange
         var injected = new List<int>();
         var sleeps = 0;
-        var healer = new TriggerButtonHealer(_logger, virtualKey => virtualKey == VK_XBUTTON2 && sleeps < 3, injected.Add, _ => sleeps++);
+        var healer = new TriggerButtonHealer(_tempLogger.Logger, virtualKey => virtualKey == VK_XBUTTON2 && sleeps < 3, injected.Add, _ => sleeps++);
 
         // Act
         healer.HealStuckButtons();
@@ -57,7 +45,7 @@ public sealed class TriggerButtonHealerTests : IDisposable
     {
         // Arrange
         var injected = new List<int>();
-        var healer = new TriggerButtonHealer(_logger, virtualKey => virtualKey == VK_XBUTTON2, injected.Add, _ => { });
+        var healer = new TriggerButtonHealer(_tempLogger.Logger, virtualKey => virtualKey == VK_XBUTTON2, injected.Add, _ => { });
 
         // Act
         healer.HealStuckButtons();
@@ -71,13 +59,13 @@ public sealed class TriggerButtonHealerTests : IDisposable
     public void HealStuckButtons_ButtonStuckPastDeadline_LogsTheInjection()
     {
         // Arrange
-        var healer = new TriggerButtonHealer(_logger, virtualKey => virtualKey == VK_XBUTTON2, _ => { }, _ => { });
+        var healer = new TriggerButtonHealer(_tempLogger.Logger, virtualKey => virtualKey == VK_XBUTTON2, _ => { }, _ => { });
 
         // Act
         healer.HealStuckButtons();
 
         // Assert
-        var logContent = File.ReadAllText(Path.Combine(Path.GetTempPath(), $"{_loggerName}.log"));
+        var logContent = File.ReadAllText(_tempLogger.LogPath);
         Assert.Contains("Trigger button 0x06", logContent);
         Assert.Contains("injected its release", logContent);
     }
