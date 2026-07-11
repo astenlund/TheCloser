@@ -14,6 +14,10 @@ internal static class NativeMethods
     public const uint GA_ROOT = 2;
     public const uint MOUSEEVENTF_LEFTDOWN = 0x0002;
     public const uint MOUSEEVENTF_LEFTUP = 0x0004;
+    public const uint MOUSEEVENTF_MIDDLEUP = 0x0040;
+    public const uint MOUSEEVENTF_XUP = 0x0100;
+    public const uint XBUTTON1 = 0x0001;
+    public const uint XBUTTON2 = 0x0002;
     public const uint INPUT_MOUSE = 0;
     public const int VK_MBUTTON = 0x04;
     public const int VK_XBUTTON1 = 0x05;

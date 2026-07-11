@@ -41,6 +41,8 @@ internal class WindowCloser
         };
     }
 
+    public bool PerformedInputAttach => _activator.PerformedInputAttach;
+
     public void CloseWindowUnderCursor()
     {
         if (!TryGetMouseCursorPosition(out var cursorPosition))

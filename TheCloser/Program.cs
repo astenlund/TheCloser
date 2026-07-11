@@ -58,7 +58,18 @@ public static class Program
 
             sharedState.WriteThrottleTick(Environment.TickCount64);
 
-            new WindowCloser(BuildConfiguration(), sharedState, Logger).CloseWindowUnderCursor();
+            var windowCloser = new WindowCloser(BuildConfiguration(), sharedState, Logger);
+            windowCloser.CloseWindowUnderCursor();
+
+            if (windowCloser.PerformedInputAttach)
+            {
+                // Release the single-instance guard before lingering: the monitor may hold the
+                // process alive for up to 2s, and follow-up invocations must not be rejected as
+                // "previous instance still running" meanwhile. Any pending repair record at this
+                // point means a failed restore that the daemon watchdog should pick up anyway.
+                mutex.ReleaseMutex();
+                new TriggerButtonHealer(Logger).HealStuckButtons();
+            }
 
             Logger.Log("");
         }
