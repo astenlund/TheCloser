@@ -13,7 +13,7 @@ dotnet build
 pwsh ./deploy.ps1
 ```
 
-The deploy script stops the daemon, builds in Release mode, and copies executables to `C:\Sync\Personal\3. Resources\Bin\TheCloser\`.
+The deploy script stops the daemon, builds in Release mode, and copies the executables and invocation-layer files (`TheCloser.ahk`, `install-elevated-ahk.ps1`) to the deploy target configured in `deploy.settings.psd1` (git-ignored, machine-local; see `deploy.settings.example.psd1`).
 
 ### Running the Application
 ```bash
