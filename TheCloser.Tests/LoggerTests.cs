@@ -50,6 +50,20 @@ public sealed class LoggerTests : IDisposable
     }
 
     [Fact]
+    public void Constructor_FileExactlyAtThreshold_DoesNotRotate()
+    {
+        // Arrange
+        File.WriteAllBytes(_logPath, new byte[RotationThresholdBytes]);
+
+        // Act
+        _ = new Logger(_appName);
+
+        // Assert
+        Assert.True(File.Exists(_logPath));
+        Assert.False(File.Exists(_logPath + ".old"));
+    }
+
+    [Fact]
     public void Constructor_SecondRotation_OverwritesExistingOldFile()
     {
         // Arrange
