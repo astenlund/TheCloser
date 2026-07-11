@@ -7,9 +7,10 @@ using static TheCloser.TitleBarClickPosition;
 namespace TheCloser;
 
 // Brings the target window to the foreground via an escalation ladder: already-foreground check,
-// native activation of the target and then its root (each under a foreground-lock suppression,
-// with the input queues of the foreground owner and the target attached), and finally a
-// synthesized title bar click.
+// native activation of the root window (under a foreground-lock suppression, with the input
+// queues of the foreground owner and the root attached), and finally a synthesized title bar
+// click. The root is activated directly because SetForegroundWindow rejects child HWNDs even
+// with foreground permission, and a child can only become "foreground" via its root anyway.
 internal class ForegroundActivator
 {
     private const int TitleBarClickOffsetX = 10;
@@ -33,6 +34,11 @@ internal class ForegroundActivator
     {
         var rootWindow = GetRootWindow(targetWindow);
 
+        if (rootWindow == IntPtr.Zero)
+        {
+            rootWindow = targetWindow;
+        }
+
         if (IsForeground(targetWindow))
         {
             _logger.Log("Foreground: target was already foreground.");
@@ -40,14 +46,7 @@ internal class ForegroundActivator
             return true;
         }
 
-        if (TryActivateNatively(targetWindow))
-        {
-            _logger.Log("Foreground: native activation of the target window succeeded.");
-
-            return true;
-        }
-
-        if (rootWindow != targetWindow && TryActivateNatively(rootWindow))
+        if (TryActivateNatively(rootWindow))
         {
             _logger.Log("Foreground: native activation of the root window succeeded.");
 
