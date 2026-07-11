@@ -56,6 +56,8 @@ The crash-repair design depends on the repair record existing *before* the syste
 
 The shared library went to deliberate lengths to make every side-effecting piece injectable, and then the one class orchestrating them news up concrete dependencies in its constructor; that is why `WindowCloserTests` can only reach `ResolveKillMethodName` and none of the dispatch/activation flow. Fix: constructor parameters with real-implementation defaults, mirroring the `ForegroundLockSuppression` pattern.
 
+Same debt one level down: `ForegroundActivator` calls `NativeMethods` statics directly, so the escalation ladder's rung order and the attach discipline in `TryActivateNatively` (owner attach before SetForegroundWindow, both attaches detached in the finally; the fix for the Chrome activation bug, 6fbbbc3) are unpinnable by tests. When taking this entry, extend injectable delegates to `ForegroundActivator` too and pin at least the owner-attach-then-SetForegroundWindow ordering, which is behavior a refactor could silently break with no failing test.
+
 ## Hygiene
 
 ### Analyzer enforcement
