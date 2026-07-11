@@ -7,8 +7,9 @@ using static TheCloser.TitleBarClickPosition;
 namespace TheCloser;
 
 // Brings the target window to the foreground via an escalation ladder: already-foreground check,
-// native activation of the target and then its root (each under a foreground-lock suppression),
-// and finally a synthesized title bar click.
+// native activation of the target and then its root (each under a foreground-lock suppression,
+// with the input queues of the foreground owner and the target attached), and finally a
+// synthesized title bar click.
 internal class ForegroundActivator
 {
     private const int TitleBarClickOffsetX = 10;
@@ -76,6 +77,9 @@ internal class ForegroundActivator
     {
         using var suppression = new ForegroundLockSuppression(_sharedState, _logger);
 
+        var foregroundWindow = GetForegroundWindow();
+        var attachedToForegroundOwner = TryAttachToForegroundOwner(foregroundWindow, targetWindow);
+
         try
         {
             if (!AttachThreadInput(targetWindow))
@@ -95,7 +99,40 @@ internal class ForegroundActivator
         finally
         {
             DetachThreadInput(targetWindow);
+
+            if (attachedToForegroundOwner)
+            {
+                DetachThreadInput(foregroundWindow);
+            }
         }
+    }
+
+    // Foreground rights belong to the thread that received the user's last input (the current
+    // foreground owner), and the lock-timeout suppression does not lift that rule. Sharing the
+    // owner's input queue borrows its permission so SetForegroundWindow can succeed. Skipped when
+    // the owner shares the target's thread: the target attach already covers that queue.
+    private bool TryAttachToForegroundOwner(IntPtr foregroundWindow, IntPtr targetWindow)
+    {
+        if (foregroundWindow == IntPtr.Zero)
+        {
+            _logger.Log("Skipping the foreground owner attach (no foreground window).");
+
+            return false;
+        }
+
+        if (GetWindowThreadProcessId(foregroundWindow, out _) == GetWindowThreadProcessId(targetWindow, out _))
+        {
+            return false;
+        }
+
+        if (!AttachThreadInput(foregroundWindow))
+        {
+            _logger.Log($"AttachThreadInput to the foreground owner failed (error {Marshal.GetLastPInvokeError()}).");
+
+            return false;
+        }
+
+        return true;
     }
 
     private bool TryActivateByClicking(IntPtr targetWindow, TitleBarClickPosition clickPosition)
