@@ -79,7 +79,7 @@ Reported: 2026-07-10. Status: open.
 **Next steps (require mouse; deferred):**
 
 1. Re-verify the bug under the fixed binary (deployed 2026-07-10). It may have been entirely a symptom of the stranded timeout=0.
-2. Per-rung ladder logging has landed in the repo (ForegroundActivator.TryActivate); after the next failing occurrence, the log will state exactly which rung claimed success. Before redeploying, bundle two diagnosability fixes from the 2026-07-11 review: add timestamps to every log line centrally in `Logger.Log` (deleting the manual `Timestamp:` line in `Program.LogEarlyExit`; today the success path and the entire daemon log are undated, so rung entries cannot be correlated with interactive attempts), and log the `AttachThreadInput` result in `ForegroundActivator.TryActivateNatively` (currently discarded silently, so the per-rung logging leaves no trace of the most failure-prone step). Then redeploy.
+2. Diagnostics deployed 2026-07-11: per-rung ladder logging (ForegroundActivator.TryActivate), timestamps on every log line (Logger.Log), and AttachThreadInput failure logging (ForegroundActivator.TryActivateNatively). After the next failing occurrence, the log will state exactly which rung claimed success, whether the attach failed, and when, correlatable with the interactive attempt.
 3. If the bug survives: try SetFocus on the target while AttachThreadInput is active (the classic remedy absent from this codebase; the place is ForegroundActivator.TryActivateNatively), and only then consider attaching to the foreground owner's thread instead of the target's.
 4. Prior art: a SwitchToThisWindow() fallback was added and reverted (04cbeb7 reverted b971d68); re-check the revert motivation before reintroducing.
 
