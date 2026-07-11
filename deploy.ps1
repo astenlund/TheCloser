@@ -1,5 +1,11 @@
 $ErrorActionPreference = 'Stop'
 
+# Native AOT's ilcompiler locates the VC++ toolchain via vswhere.exe, which is not on PATH in shells without the VS developer environment.
+$VsInstallerDir = 'C:\Program Files (x86)\Microsoft Visual Studio\Installer'
+if ($env:PATH -notlike "*$VsInstallerDir*") {
+    $env:PATH = "$VsInstallerDir;$env:PATH"
+}
+
 Get-Process 'TheCloser.Daemon' -ErrorAction Ignore | Stop-Process -Verbose
 
 dotnet publish $PSScriptRoot --configuration 'Release'
