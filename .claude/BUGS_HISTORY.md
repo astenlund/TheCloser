@@ -35,6 +35,8 @@ Reported: 2026-07-11. Mitigated: 2026-07-11 in 0b2affe.
 
 **Residual risk, accepted:** the underlying race is not reproducible on demand; the narrow attach window plus the self-heal bound the damage (~2s of dead mouse, auto-recovered) rather than provably eliminate it. Deliberate anti-goal: no daemon backstop for the healer; a leak requires the sub-millisecond attach race AND an app death inside the 2s monitor, and the daemon's 5s watchdog tick would heal far slower than the in-app monitor does.
 
+**Contingency (decided 2026-07-11):** if the symptom recurs and the healer fails to clear it, either debug the escape route further (the healer's log line plus the manual remedy above are the entry points) or fall back to the preventive pre-attach release wait exactly as it existed in 0b2affe, accepting its ~50-100ms activation latency on background-target invocations.
+
 ### Chrome window activation fails when a non-Chrome process holds the foreground
 
 Reported: 2026-07-10. Fixed: 2026-07-11 in 6fbbbc3 (deployed same day).
