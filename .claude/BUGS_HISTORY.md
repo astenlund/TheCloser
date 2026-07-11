@@ -35,7 +35,7 @@ Reported: 2026-07-10. Fixed: 2026-07-11 in 6fbbbc3 (deployed same day).
 **Durable learnings** (full diagnosis in this entry's git history in `BUGS.md`):
 
 - The lock-timeout suppression (ForegroundLockSuppression) lifts only the timeout-based denial rule; the input-lock rule requires sharing the foreground owner's input queue via AttachThreadInput.
-- Chrome's HWND hierarchy under the cursor varies by invocation: WindowFromPoint sometimes returns the Chrome_WidgetWin_1 root, sometimes a child; the ladder's target-then-root rung pair covers both.
+- Chrome's HWND hierarchy under the cursor varies by invocation: WindowFromPoint sometimes returns the Chrome_WidgetWin_1 root, sometimes a child. The ladder originally covered both with a target-then-root rung pair; the target rung was later dropped because SetForegroundWindow rejects child HWNDs even with foreground permission (verified in the 2026-07-11 traces: the child rung failed in the same permission context where the root rung succeeded), so the ladder activates the root directly.
 - The title bar click fallback works for Chrome and its default Left click point (left+10, top+20) lands above the tab click area (no accidental tab switch), at the cost of ~200ms and a cursor round-trip; it remains the last rung.
 - Closing a specific background tab (tab-strip hover) is deliberately unsupported: the app is bound to a mouse button, so Chrome's native middle-click-to-close is already an equivalent gesture away.
 - Prior art: a SwitchToThisWindow() fallback was added and reverted (04cbeb7 reverted b971d68) with no recorded motivation; treat as untried rather than rejected if the ladder ever needs another rung.
