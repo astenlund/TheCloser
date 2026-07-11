@@ -78,7 +78,10 @@ internal class ForegroundActivator
 
         try
         {
-            AttachThreadInput(targetWindow);
+            if (!AttachThreadInput(targetWindow))
+            {
+                _logger.Log($"AttachThreadInput failed (error {Marshal.GetLastPInvokeError()}).");
+            }
 
             if (!SetForegroundWindow(targetWindow))
             {
