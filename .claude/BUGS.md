@@ -50,11 +50,11 @@ Reported: 2026-07-11. Status: diagnosed; remedy is an environment decision, not 
 
 **Diagnosis (2026-07-11):** the app never runs; the log records zero invocations for these presses. Discrimination test: with Task Manager focused, both hovering Task Manager itself AND hovering an unelevated Chrome window left the log silent, so the filtering keys off the *active* window's integrity, not the hovered target's. Root cause is UIPI: low-level input hooks of unelevated processes (the user's AutoHotkey, confirmed unelevated) receive no input while an elevated window is active; this is AutoHotkey's documented administrative-window limitation. Nothing in TheCloser's ladder ever executes, so nothing in this repo can fix it.
 
-**Remedy options (user decision):** (1) AutoHotkey's UI Access launch mode (signed UIA binary; hooks work over elevated windows, everything stays unelevated; closing the elevated window itself remains impossible under UIPI); (2) AHK elevated via a logon scheduled task with highest privileges (TheCloser inherits elevation and could then also close elevated windows; whole hotkey surface runs as admin); (3) accept, with the workaround of clicking the target first to de-focus the admin app.
+**Decision (2026-07-11):** option 2, AHK elevated via a logon scheduled task; the user explicitly wants to close elevated windows (Task Manager, nine years of muscle memory), which requires TheCloser to inherit elevation (UIPI blocks every kill method across the integrity boundary otherwise). Codified in `install-elevated-ahk.ps1` (repo root, copied to the synced Bin folder by `deploy.ps1`; run once per machine from an elevated shell). `TheCloser.ahk` is now repo-tracked and deployed the same way. `Taskmgr -> SC_CLOSE` added to the deployed appsettings.json (message-based, so no activation ladder against the elevated window). Old unelevated autostart removal is manual, per machine.
 
-**Follow-up once remedied:** the elevated-foreground-owner case is untested ladder territory. Expect `AttachThreadInput to the foreground owner failed (error 5)` (UIPI blocks attaching to higher integrity); verify whether native activation or the click fallback carries it, and capture the trace here.
+**Verification once the task is installed:** with Task Manager focused, (a) M5 over Task Manager closes it (`Taskmgr -> SC_CLOSE` in the log); (b) M5 over a background Chrome viewport closes its active tab; the elevated-foreground-owner ladder case is untested territory, so capture the trace here whatever it shows. Also confirm the stuck-button healer still behaves (elevated TheCloser injecting the release is same-or-lower integrity, should be unaffected).
 
-**Requires:** user decision on AHK elevation posture (UI Access vs elevated scheduled task vs accept).
+**Requires:** user runs `install-elevated-ahk.ps1` elevated on this machine and removes the old autostart.
 
 ### Test hygiene: stray GUID-named log files in %TEMP%
 
