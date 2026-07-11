@@ -241,3 +241,6 @@ ModelManifest.xml
 # FAKE - F# Make
 .fake/
 .idea/
+
+# Claude Code local (per-machine) settings
+.claude/settings.local.json
