@@ -11,7 +11,7 @@ namespace TheCloser;
 // queues of the foreground owner and the root attached), and finally a synthesized title bar
 // click. The root is activated directly because SetForegroundWindow rejects child HWNDs even
 // with foreground permission, and a child can only become "foreground" via its root anyway.
-internal class ForegroundActivator
+internal class ForegroundActivator : IForegroundActivator
 {
     private const int TitleBarClickOffsetX = 10;
     private const int TitleBarClickOffsetY = 20;
