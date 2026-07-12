@@ -108,6 +108,53 @@ public class ProcessSettingsParserTests
         Assert.Null(settings.ClickPosition);
     }
 
+    [Fact]
+    public void Parse_InRangeNumericClickPosition_ParsesToTheMatchingMember()
+    {
+        // Arrange
+        var config = BuildConfig(new Dictionary<string, string?> { ["chrome:ClickPosition"] = "1" });
+        var warnings = new List<string>();
+
+        // Act
+        var settings = ProcessSettingsParser.Parse(config, "chrome", warnings.Add);
+
+        // Assert: in-range numeric strings are accepted silently; this pins the current lenient behavior.
+        Assert.Equal(TitleBarClickPosition.Center, settings.ClickPosition);
+        Assert.Empty(warnings);
+    }
+
+    [Fact]
+    public void Parse_SimpleValueAlongsideObjectForm_SimpleValueWins()
+    {
+        // Arrange
+        var config = BuildConfig(new Dictionary<string, string?>
+        {
+            ["chrome"] = "alt-f4",
+            ["chrome:Method"] = "CTRL-W",
+            ["chrome:ClickPosition"] = "Center"
+        });
+
+        // Act
+        var settings = ProcessSettingsParser.Parse(config, "chrome");
+
+        // Assert: the simple form short-circuits the object keys, including ClickPosition.
+        Assert.Equal("alt-f4", settings.Method);
+        Assert.Null(settings.ClickPosition);
+    }
+
+    [Fact]
+    public void Parse_InvalidClickPositionWithoutWarningSink_DoesNotThrow()
+    {
+        // Arrange
+        var config = BuildConfig(new Dictionary<string, string?> { ["chrome:ClickPosition"] = "Diagonal" });
+
+        // Act
+        var exception = Record.Exception(() => ProcessSettingsParser.Parse(config, "chrome"));
+
+        // Assert
+        Assert.Null(exception);
+    }
+
     private static IConfiguration BuildConfig(IDictionary<string, string?> values) =>
         new ConfigurationBuilder().AddInMemoryCollection(values).Build();
 }
