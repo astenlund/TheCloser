@@ -48,6 +48,10 @@ Interleaving: app died mid-suppression leaving a pending record; the watchdog ac
 
 ## Testability
 
+### Dangerous real-implementation defaults in constructor seams
+
+The injectable seams ship with real defaults: `ForegroundActivator` defaults `suppressionFactory` to constructing a real `ForegroundLockSuppression` (whose constructor mutates the system-wide foreground lock timeout), `WindowCloser` defaults to a real activator and keystroke sender, and `TriggerButtonHealer` defaults to real input injection. A test that forgets one injection silently touches real system state instead of failing to compile. Preferred shape: make the dependencies required (no defaults) and compose imperatively in `Program.Main`, the app's natural composition root; test helpers already build full fakes. Anti-goal: an IoC container. Three collaborators do not justify one, and Native AOT penalizes reflection-based containers. When this lands, rewrite the CLAUDE.md test-safety bullet (the suppression-factory warning becomes moot once injection is required).
+
 ### Publish-record-before-disable ordering in ForegroundLockSuppression is untested
 
 The crash-repair design depends on the repair record existing *before* the system value is mutated, but swapping `SetTimeoutRepair` and `disable()` passes the current suite, because every test asserts only end state (identical under either order). Fix: capture `state.TryReadTimeoutRepair(...)` inside the injected `disable` delegate and assert the record was already pending with the right value at disable time. For contrast, the restore-before-clear ordering in `TimeoutRepair` *is* pinned indirectly by `RestoreAndClear_RestoreFails_KeepsRecordPending`.
