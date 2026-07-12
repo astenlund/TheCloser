@@ -16,7 +16,22 @@ if ($env:PATH -notlike "*$VsInstallerDir*") {
     $env:PATH = "$VsInstallerDir;$env:PATH"
 }
 
-Get-Process 'TheCloser.Daemon' -ErrorAction Ignore | Stop-Process -Verbose
+# The daemon inherits elevation from the AHK invocation layer, so an unelevated shell cannot
+# stop it directly; retry the stop once through an elevated child before giving up.
+$Daemon = Get-Process 'TheCloser.Daemon' -ErrorAction Ignore
+if ($Daemon) {
+    try {
+        $Daemon | Stop-Process -Verbose -ErrorAction Stop
+    }
+    catch {
+        Start-Process pwsh -Verb RunAs -Wait -ArgumentList '-NoProfile', '-Command', "Get-Process 'TheCloser.Daemon' -ErrorAction Ignore | Stop-Process"
+
+        if (Get-Process 'TheCloser.Daemon' -ErrorAction Ignore) {
+            [Console]::Error.WriteLine('Could not stop TheCloser.Daemon even via the elevated retry. Nothing was deployed.')
+            exit 1
+        }
+    }
+}
 
 dotnet publish $PSScriptRoot --configuration 'Release'
 
