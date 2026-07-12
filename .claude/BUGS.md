@@ -42,23 +42,7 @@ consult `BUGS_HISTORY.md`.
 
 ## Open
 
-### Test hygiene: stray GUID-named log files in %TEMP%
-
-Reported: 2026-07-10. Status: open (minor).
-
-WindowCloserTests' unknown-method fallback case, CrashRepairTests' failure-path tests, and ForegroundLockSuppressionTests' restore-failure paths write through real Logger instances with GUID-suffixed names, leaving stray `TheCloser.Tests.<guid>.log` files in %TEMP% on each run (LoggerTests clean up after themselves; these three classes do not). While sweeping, also consider asserting the fallback warning log line in WindowCloserTests, which currently exercises the warning path but never verifies the message.
-
-The 2026-07-11 full-solution review verified the three write paths: CrashRepairTests' static Logger is written by `TryRepairCrashedState_RestoreFails_KeepsRecordForNextTick` (production logs in `CrashRepair`), ForegroundLockSuppressionTests' static Logger by `Dispose_RestoreFails_KeepsRecordPending` (production logs in `ForegroundLockSuppression.Dispose`), and WindowCloserTests' per-test logger by the `NO-SUCH-METHOD` fallback case. Fix shape: a small `TempLogger : IDisposable` helper next to `TestNames`, following the cleanup pattern LoggerTests already uses (delete `<name>.log` and `.log.old` in `Dispose`).
-
-Close the review's test coverage gaps in the same sweep (most valuable first):
-
-- `SharedState` offset independence: no test writes both the throttle tick and the repair record, so an off-by-4 in `RepairFlagOffset` overlapping the 8-byte tick would pass silently. Set a record, `WriteThrottleTick(long.MaxValue)`, assert the record intact; and the reverse.
-- Logger rotation at exactly 1 MiB: production rotates only on strictly-greater; tests cover 16 bytes and threshold+1 but not the boundary, which must NOT rotate.
-- `ResolveKillMethodName("")`: empty string takes a different path than `null` (`?? DefaultKillMethod` does not apply; it falls to `ContainsKey("")`). Also six of the nine documented method names are untested; a theory over the full documented list pins the dictionary against typos and README drift.
-- `ProcessSettingsParser`: numeric ClickPosition `"1"` silently parses to `Center` (the `Enum.IsDefined` guard only rejects out-of-range numerics); precedence when both simple value and `Method` key exist is unpinned; invalid ClickPosition with null `logWarning` (cheap NRE guard).
-- While in LoggerTests: retire the duplicated fixed-UTC-timestamp construction (a named variable in `Log_NonEmptyMessage_PrefixesUtcTimestamp`, an inline literal in `Log_EmptyMessage_WritesBareSeparatorLine`) into a shared fixture field.
-
-**Requires:** none.
+Nothing open.
 
 ## History
 
