@@ -78,3 +78,4 @@ Reported: 2026-07-10. Fixed: 2026-07-11 in 6fbbbc3 (deployed same day).
 - The title bar click fallback works for Chrome and its default Left click point (left+10, top+20) lands above the tab click area (no accidental tab switch), at the cost of ~200ms and a cursor round-trip; it remains the last rung.
 - Closing a specific background tab (tab-strip hover) is deliberately unsupported: the app is bound to a mouse button, so Chrome's native middle-click-to-close is already an equivalent gesture away.
 - Prior art: a SwitchToThisWindow() fallback was added and reverted (04cbeb7 reverted b971d68) with no recorded motivation; treat as untried rather than rejected if the ladder ever needs another rung.
+- An `AttachThreadInput ... failed (error 0)` log line can be benign: same-thread attaches and already-attached pairs return failure without setting an OS error, so error 0 means no diagnosable OS failure rather than a mysterious one.
