@@ -64,11 +64,7 @@ TheCloser is a Windows utility that closes windows/tabs under the mouse cursor. 
 
 ## Window Closing Methods
 
-The application supports multiple methods configured per-process in `appsettings.json`, which is read from the deployed executable's directory and maintained by hand there (the repository carries no appsettings.json; see the README for examples). Method and ClickPosition values are parsed case-insensitively; unknown values are logged and fall back to defaults:
-- **WM_DESTROY, WM_CLOSE, WM_QUIT**: Windows messages
-- **SC_CLOSE**: System command (WM_SYSCOMMAND with SC_CLOSE)
-- **ESCAPE, ALT-F4, CTRL-F4, CTRL-W, CTRL-SHIFT-W**: Keyboard shortcuts
-- Default method: CTRL-W
+The application supports multiple methods configured per-process in `appsettings.json`, which is read from the deployed executable's directory and maintained by hand there (the repository carries no appsettings.json; see the README for examples). Method and ClickPosition values are parsed case-insensitively; unknown values are logged and fall back to defaults (see `ProcessSettingsParser` for the full method set; default method: CTRL-W).
 
 ## Tracking
 
@@ -76,12 +72,8 @@ Known bugs, quick wins, feature ideas, and design patterns are tracked in the `.
 
 ## Key Implementation Details
 
-1. **Window Detection**: Uses Windows API to get window under cursor position
-2. **Foreground Window Handling**: Multiple strategies including SetForegroundWindow, AttachThreadInput, and clicking on title bar as fallback, implemented as the escalation ladder in `ForegroundActivator`. The system-wide foreground lock timeout is disabled around SetForegroundWindow and restored afterwards (the `ForegroundLockSuppression` scope); a repair record in the memory-mapped file plus the daemon watchdog and the app's startup repair heal the setting if the process is killed mid-operation. Because the app is invoked from a mouse button binding, AttachThreadInput's key-state resync can strand the button's in-flight release, leaving it stuck down system-wide; after any close that performed an attach, the app releases the guard mutex and lingers up to 2s monitoring the middle/X buttons (`TriggerButtonHealer`), injecting the missing release if one stays down past the deadline (see the stuck-XBUTTON2 entry in `.claude/BUGS_HISTORY.md` for the incident and the manual recovery command)
-3. **Inter-Process Communication**: A single memory-mapped file (pinned by the daemon) shares the throttle tick and the timeout repair record between main app and daemon
-4. **Native AOT**: Compiled with Native AOT for faster startup and smaller memory footprint
-5. **Logging**: Timestamped debug logs written to temp directory for troubleshooting
-6. **Accepted residual risk**: the timeout repair record only survives an app crash while a live daemon pins the memory-mapped file. If the daemon is dead (or on a first run where the 1s daemon wait timed out), a kill inside the sub-second disable window strands the foreground lock timeout at 0 until reboot. Gating the SPI manipulation on a confirmed daemon pin is an explicit anti-goal
+1. **Foreground Window Handling**: Multiple strategies including SetForegroundWindow, AttachThreadInput, and clicking on title bar as fallback, implemented as the escalation ladder in `ForegroundActivator`. The system-wide foreground lock timeout is disabled around SetForegroundWindow and restored afterwards (the `ForegroundLockSuppression` scope); a repair record in the memory-mapped file plus the daemon watchdog and the app's startup repair heal the setting if the process is killed mid-operation. Because the app is invoked from a mouse button binding, AttachThreadInput's key-state resync can strand the button's in-flight release, leaving it stuck down system-wide; after any close that performed an attach, the app releases the guard mutex and lingers up to 2s monitoring the middle/X buttons (`TriggerButtonHealer`), injecting the missing release if one stays down past the deadline (see the stuck-XBUTTON2 entry in `.claude/BUGS_HISTORY.md` for the incident and the manual recovery command)
+2. **Accepted residual risk**: the timeout repair record only survives an app crash while a live daemon pins the memory-mapped file. If the daemon is dead (or on a first run where the 1s daemon wait timed out), a kill inside the sub-second disable window strands the foreground lock timeout at 0 until reboot. Gating the SPI manipulation on a confirmed daemon pin is an explicit anti-goal
 
 ## Backlogs and indexes
 
