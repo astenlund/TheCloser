@@ -40,7 +40,7 @@ Any process named `TheCloser.Daemon` counts, including a `--stop` stopper (as de
 
 ### TryMoveCursor ignores both P/Invoke returns
 
-In `ForegroundActivator.TryMoveCursor`, a failed `SetCursorPos` just burns 5 retries, and an ignored `GetCursorPos` failure compares against a zeroed struct. The same file already uses the checked `TryGetMouseCursorPosition` wrapper elsewhere; use it here and bail early on a failed set.
+In `ForegroundActivator.TryMoveCursor`, both `_native.SetCursorPosition` and `_native.TryGetCursorPosition` returns are ignored: a failed set just burns 5 retries, and a failed position read compares against a zeroed struct. The comment above the method marks the deferral. Fix: bail early on a failed set and treat a failed read as a failed attempt. The `INativeWindowApi` seam makes both paths unit-testable (`FakeNativeApi` in `ForegroundActivatorTests` already has a `CursorPositionAvailable` toggle).
 
 ### App launch during a daemon repair tick is misclassified
 
@@ -77,7 +77,7 @@ One-line items, each independently landable:
 - The daemon's `SignalExit` manually calls `Set()` then `Dispose()`; a `using var` on the `TryOpenExisting` out variable is the idiomatic, leak-proof shape.
 - Inconsistent sealing: `SharedState` and `ForegroundLockSuppression` are `sealed`; `Logger`, `WindowCloser`, `ForegroundActivator` are not, and none is designed for inheritance.
 - `Program.AssemblyName` (main app) is a public reflection-based one-off used exactly once, asymmetric with the daemon's plain constant in `Constants.cs`; replace with a constant.
-- `NativeMethods`: `GetCurrentThreadId`, `GetAncestor`, `GetWindowThreadProcessId` are `public` but consumed only inside the class; `INPUT.Size` recomputes `Marshal.SizeOf<INPUT>()` on every access (make it `static readonly`).
+- `NativeMethods`: `GetCurrentThreadId` and `GetAncestor` are `public` but consumed only inside the class (`GetWindowThreadProcessId` gained an external consumer in `NativeWindowApi`); `INPUT.Size` recomputes `Marshal.SizeOf<INPUT>()` on every access (make it `static readonly`).
 - `LoggerTests` re-declares the `1024 * 1024` threshold because `Logger.MaxLogSizeBytes` is private; making it `internal` (plus `InternalsVisibleTo` on TheCloser.Shared) removes the duplication.
 - The app-to-daemon `ProjectReference` (kept for the exe copy) is a full assembly reference, so the daemon's `Program` (public) is callable from app code; making it internal closes that door at zero cost.
 

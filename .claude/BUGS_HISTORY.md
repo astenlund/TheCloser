@@ -24,7 +24,7 @@ archaeological.
 
 Reported: 2026-07-10. Fixed: 2026-07-12 (test-only sweep across the commits titled "test: add TempLogger and stop leaking log files in %TEMP%" through "test(parser): pin numeric position, precedence, null warn sink").
 
-**Fix:** `TempLogger : IDisposable` next to `TestNames` wraps a GUID-named `Logger` and deletes `<name>.log` / `.log.old` on dispose; adopted in CrashRepairTests, ForegroundLockSuppressionTests, WindowCloserTests, and TriggerButtonHealerTests (which had hand-rolled the same cleanup). Verified by a clean `%TEMP%` after a full test-project run.
+**Fix:** `TempLogger : IDisposable` next to `TestNames` wraps a GUID-named `Logger` and deletes `<name>.log` / `.log.old` on dispose; adopted in CrashRepairTests, ForegroundLockSuppressionTests, WindowCloserTests, and TriggerButtonHealerTests (which had hand-rolled the same cleanup). Verified by a clean `%TEMP%` after a full test-project run. A post-landing review pass single-sourced the temp-log-path formula as `Logger.GetLogPath`, consumed by Logger's constructor, TempLogger, and LoggerTests, so the cleanup can no longer silently desync from Logger's naming scheme.
 
 **Coverage gaps from the 2026-07-11 review closed in the same sweep:** SharedState offset independence (tick vs repair record, both directions); Logger's no-rotation-at-exactly-1-MiB boundary; `ResolveKillMethodName` empty-string fallback, a theory over all nine documented method names, and the fallback warning log assertion; ProcessSettingsParser in-range numeric ClickPosition leniency, simple-value-over-object-form precedence, and null-warning-sink safety; LoggerTests' fixed-UTC-timestamp duplication retired into a shared field.
 
