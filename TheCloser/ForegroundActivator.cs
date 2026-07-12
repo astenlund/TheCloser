@@ -21,13 +21,22 @@ internal class ForegroundActivator : IForegroundActivator
 
     private static readonly TimeSpan CursorPollInterval = TimeSpan.FromMilliseconds(10);
 
-    private readonly SharedState _sharedState;
     private readonly Logger _logger;
+    private readonly INativeWindowApi _native;
+    private readonly Action<TimeSpan> _sleep;
+    private readonly Func<IDisposable> _suppressionFactory;
 
-    public ForegroundActivator(SharedState sharedState, Logger logger)
+    public ForegroundActivator(
+        SharedState sharedState,
+        Logger logger,
+        INativeWindowApi? native = null,
+        Action<TimeSpan>? sleep = null,
+        Func<IDisposable>? suppressionFactory = null)
     {
-        _sharedState = sharedState;
         _logger = logger;
+        _native = native ?? new NativeWindowApi();
+        _sleep = sleep ?? Thread.Sleep;
+        _suppressionFactory = suppressionFactory ?? (() => new ForegroundLockSuppression(sharedState, logger));
     }
 
     // True once any AttachThreadInput succeeded during this run. The attach's key-state resync
@@ -37,7 +46,7 @@ internal class ForegroundActivator : IForegroundActivator
 
     public bool TryActivate(IntPtr targetWindow, TitleBarClickPosition clickPosition)
     {
-        var rootWindow = GetRootWindow(targetWindow);
+        var rootWindow = _native.GetRootWindow(targetWindow);
 
         if (rootWindow == IntPtr.Zero)
         {
@@ -68,10 +77,10 @@ internal class ForegroundActivator : IForegroundActivator
         return false;
     }
 
-    private static bool IsForeground(IntPtr targetWindow)
+    private bool IsForeground(IntPtr targetWindow)
     {
-        var rootWindow = GetRootWindow(targetWindow);
-        var foregroundWindow = GetForegroundWindow();
+        var rootWindow = _native.GetRootWindow(targetWindow);
+        var foregroundWindow = _native.GetForegroundWindow();
 
         return foregroundWindow == targetWindow ||
                foregroundWindow == rootWindow;
@@ -79,14 +88,14 @@ internal class ForegroundActivator : IForegroundActivator
 
     private bool TryActivateNatively(IntPtr targetWindow)
     {
-        using var suppression = new ForegroundLockSuppression(_sharedState, _logger);
+        using var suppression = _suppressionFactory();
 
-        var foregroundWindow = GetForegroundWindow();
+        var foregroundWindow = _native.GetForegroundWindow();
         var attachedToForegroundOwner = TryAttachToForegroundOwner(foregroundWindow, targetWindow);
 
         try
         {
-            var attachedToTarget = AttachThreadInput(targetWindow);
+            var attachedToTarget = _native.AttachThreadInput(targetWindow);
 
             if (!attachedToTarget)
             {
@@ -95,7 +104,7 @@ internal class ForegroundActivator : IForegroundActivator
 
             PerformedInputAttach |= attachedToTarget || attachedToForegroundOwner;
 
-            if (!SetForegroundWindow(targetWindow))
+            if (!_native.SetForegroundWindow(targetWindow))
             {
                 _logger.Log("SetForegroundWindow returned false.");
             }
@@ -105,15 +114,15 @@ internal class ForegroundActivator : IForegroundActivator
             // Detach before the settle wait: the attaches are only needed around the
             // SetForegroundWindow call, and every attached millisecond widens the window in which
             // the key-state resync can swallow in-flight input (see TriggerButtonHealer).
-            DetachThreadInput(targetWindow);
+            _native.DetachThreadInput(targetWindow);
 
             if (attachedToForegroundOwner)
             {
-                DetachThreadInput(foregroundWindow);
+                _native.DetachThreadInput(foregroundWindow);
             }
         }
 
-        Thread.Sleep(InputSettleDelay);
+        _sleep(InputSettleDelay);
 
         return IsForeground(targetWindow);
     }
@@ -131,12 +140,12 @@ internal class ForegroundActivator : IForegroundActivator
             return false;
         }
 
-        if (GetWindowThreadProcessId(foregroundWindow, out _) == GetWindowThreadProcessId(targetWindow, out _))
+        if (_native.GetWindowThreadId(foregroundWindow) == _native.GetWindowThreadId(targetWindow))
         {
             return false;
         }
 
-        if (!AttachThreadInput(foregroundWindow))
+        if (!_native.AttachThreadInput(foregroundWindow))
         {
             _logger.Log($"AttachThreadInput to the foreground owner failed (error {Marshal.GetLastPInvokeError()}).");
 
@@ -148,12 +157,12 @@ internal class ForegroundActivator : IForegroundActivator
 
     private bool TryActivateByClicking(IntPtr targetWindow, TitleBarClickPosition clickPosition)
     {
-        if (!GetWindowRect(targetWindow, out var rect))
+        if (!_native.TryGetWindowRect(targetWindow, out var rect))
         {
             return false;
         }
 
-        if (!TryGetMouseCursorPosition(out var oldPos))
+        if (!_native.TryGetCursorPosition(out var oldPos))
         {
             _logger.Log("Could not save the cursor position; skipping the click fallback.");
 
@@ -185,12 +194,12 @@ internal class ForegroundActivator : IForegroundActivator
             inputs[1].type = INPUT_MOUSE;
             inputs[1].U.mi.dwFlags = MOUSEEVENTF_LEFTUP;
 
-            if (SendInput((uint)inputs.Length, inputs, INPUT.Size) != inputs.Length)
+            if (_native.SendInput(inputs) != inputs.Length)
             {
                 _logger.Log($"SendInput injected fewer events than requested (error {Marshal.GetLastPInvokeError()}).");
             }
 
-            Thread.Sleep(InputSettleDelay);
+            _sleep(InputSettleDelay);
 
             return IsForeground(targetWindow);
         }
@@ -200,20 +209,22 @@ internal class ForegroundActivator : IForegroundActivator
         }
     }
 
-    private static bool TryMoveCursor(int x, int y)
+    // Deliberately preserves the ignored P/Invoke returns; fixing them is the separate
+    // "TryMoveCursor ignores both P/Invoke returns" quick win.
+    private bool TryMoveCursor(int x, int y)
     {
-        SetCursorPos(x, y);
+        _native.SetCursorPosition(x, y);
 
         for (var attempts = 0; attempts < CursorMoveRetries; attempts++)
         {
-            GetCursorPos(out var currentPos);
+            _native.TryGetCursorPosition(out var currentPos);
 
             if (currentPos.X == x && currentPos.Y == y)
             {
                 return true;
             }
 
-            Thread.Sleep(CursorPollInterval);
+            _sleep(CursorPollInterval);
         }
 
         return false;
