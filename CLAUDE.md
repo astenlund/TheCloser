@@ -59,7 +59,7 @@ TheCloser is a Windows utility that closes windows/tabs under the mouse cursor. 
 - `Logger.cs`: writes to `%TEMP%\TheCloser*.log`; every non-empty line gets a UTC round-trip timestamp prefix (empty lines are unprefixed separators; clock injectable via optional constructor delegate); contention-tolerant, rotates to `.log.old` above 1 MB, never throws
 
 ### TheCloser.Tests
-- xUnit tests for `ProcessSettingsParser`, `SharedState` (including cross-handle visibility), `TimeoutRepair`, `CrashRepair`, `ForegroundLockSuppression`, `WindowCloser` kill-method resolution, and `Logger` rotation/append/timestamping
+- xUnit tests for `ProcessSettingsParser`, `SharedState` (including cross-handle visibility), `TimeoutRepair`, `CrashRepair`, `ForegroundLockSuppression`, `WindowCloser` kill-method resolution and dispatch, the `ForegroundActivator` escalation ladder (via the injected `INativeWindowApi` seam and suppression factory), and `Logger` rotation/append/timestamping
 - Kernel objects and log files use unique GUID-suffixed names per test (via the `TestNames` helper), so tests never collide with a live daemon or each other; the repair-protocol tests inject tryGet/disable/restore delegates and never touch the real SystemParametersInfo setting
 
 ## Window Closing Methods
