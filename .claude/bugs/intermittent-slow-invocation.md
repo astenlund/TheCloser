@@ -2,9 +2,9 @@
 
 ## Status
 
-Open. The delay is confirmed to occur before managed `Main`. A lean Windows Performance Recorder trace is armed in memory and stops automatically when the invocation probe records more than 150 ms before `Main`. The temporary scheduled task `TheCloser Launch Trace (Temporary)` is registered and ready to re-arm the trace at the current user's next logon.
+Open, with the approximately 700 ms launch mode identified. A retained Windows Performance Recorder trace proves that Microsoft Defender synchronously scanned the unsigned deployed executable for 702.310 ms before Windows created the process. The temporary scheduled task `TheCloser Launch Trace (Temporary)` remains registered. After preserving the retained trace, the task was started again and armed `.tmp/TheCloser-auto-20260828-201856.etl` with monitor PID 36312 so a future slow occurrence can test for a second mode.
 
-The current goal is root-cause identification, not mitigation. Do not add exclusions, retries, preloaders, or daemon-side workarounds until a retained trace identifies the blocking component.
+The next decision is how to mitigate the Defender scan without weakening the machine's security. The earlier report of an approximately 10 second launch has not been captured and may represent a second slow-launch mode.
 
 ## Symptom
 
@@ -38,6 +38,24 @@ This sample established that the real invocation delay was before `Main`, but it
 
 This sample proves that at least one near-concurrent slow occurrence affected both executable locations before `Main`. It does not prove that the same underlying cause delayed both processes. A Sync-only explanation cannot account for every occurrence. The paired copy no longer added enough diagnostic value and was retired on 2026-08-28; the kernel trace can identify path-specific waits directly.
 
+### 2026-08-28 retained Defender trace
+
+The automatic detector stopped on deployed process PID 26848 after measuring 715.924 ms from the AutoHotkey launch timestamp to managed `Main`. The retained trace is `.tmp/TheCloser-auto-20260828-182847.etl`; it covers 29 minutes and 18 seconds with no lost events.
+
+The trace establishes this sequence:
+
+- AutoHotkey opened the deployed `TheCloser.exe` image.
+- Microsoft Defender started a real-time stream scan requested by AutoHotkey.
+- Defender performed exhaustive scanning, low-fidelity signature checks, hash calculation, and trust validation.
+- Defender recorded that `TheCloser.exe` was not trusted and that signed-file validation failed.
+- The Defender stream scan stopped 702.310 ms after it started.
+- Defender's process-create event for TheCloser followed 3.713 ms later, 706.023 ms after the scan began.
+- Managed `Main` followed about 10 ms after process creation, matching the probe's total 715.924 ms pre-`Main` measurement.
+
+The hard-fault and disk-I/O reports contain no events for the trigger interval. The minifilter-delay report contains no separate delay record. For this sample, Defender's synchronous scan accounts for nearly the entire observed pause and is the confirmed root cause.
+
+After the trace had already stopped, deployed process PID 18440 recorded another 711.074 ms before `Main`, followed by launches at 14.221 ms, 11.741 ms, and 10.570 ms. Its duration and before-`Main` shape strongly match the captured Defender mode, but it has no retained kernel trace and is therefore corroborating evidence rather than independent proof.
+
 ## Trace history
 
 The first 128 MB WPR profile captured process, loader, file, minifilter, hard-fault, sampled-profile, and Defender providers. It ran for several hours. Stopping it triggered a large runtime rundown and about 42 seconds of trace-save activity, which overwrote the useful circular buffers before the slow interval. The ETL had no dropped events but could not retain the target window.
@@ -49,7 +67,7 @@ The replacement profile uses two 64 MB memory collectors:
 
 An elevated monitor tails `%TEMP%\TheCloser.Probe.log` from its starting offset. When a new `main-enter` exceeds 150 ms, it stops WPR immediately and saves a timestamped ETL under `.tmp/`.
 
-The original heavy trace is `.tmp/TheCloser-slow-launch.etl`. The lean trace armed after the 2026-08-28 reboot targets `.tmp/TheCloser-auto-20260828-182847.etl`. After scheduled-task registration, WPR remained active with zero dropped events. ETLs are machine-local and ignored by Git; durable conclusions extracted from them belong in this report.
+The original heavy trace is `.tmp/TheCloser-slow-launch.etl`. The lean trace armed after the 2026-08-28 reboot saved `.tmp/TheCloser-auto-20260828-182847.etl` when PID 26848 crossed the trigger threshold. The automatic stop exited successfully. A replacement trace targeting `.tmp/TheCloser-auto-20260828-201856.etl` was armed at 20:18 local time. ETLs are machine-local and ignored by Git; durable conclusions extracted from them belong in this report.
 
 The temporary scheduled task has these verified properties:
 
@@ -73,20 +91,21 @@ A guarded end-to-end check against sacrificial WinForms windows passed both keyb
 - Window closing and configuration work are not the source of the long pause in the measured samples.
 - The daemon can remain alive throughout a slow occurrence.
 - One near-concurrent sample showed pre-`Main` delays in both the Sync executable and an identical local copy; whether they shared one cause remains open.
+- Microsoft Defender's synchronous scan of the unsigned and untrusted executable caused the retained approximately 716 ms slow launch.
 
 ### Refuted or narrowed
 
 - Synchronous logger writes are not required for the delay; they were queued off the invocation path and the symptom recurred.
 - A Sync-only path explanation is not sufficient for all occurrences.
 - The asymmetric 2026-08-27 pair cannot be treated as proof of a Sync-specific delay because its peer launch was issued after most of the real delay had elapsed.
+- Windows did not create the captured process until the Defender scan completed, so application scheduling, loader work, daemon discovery, configuration, and window-closing logic cannot explain that sample's pause.
+- Hard faults and storage I/O did not contribute measurable work in the captured trigger interval.
 
 ### Open
 
-- Windows process creation or scheduling delay between AutoHotkey `Run` and the new process receiving CPU time.
-- Loader, code-integrity, App Control, or signature verification work.
-- Defender or another minifilter scan.
-- Hard faults, storage latency, or image-page reactivation after idle.
-- More than one slow-launch mode, including a possible path-specific mode distinct from the near-concurrent two-path sample.
+- Why Defender repeats the scan after an idle interval despite the executable bytes remaining unchanged.
+- Whether trusted code signing prevents or materially shortens the scan without requiring a Defender exclusion.
+- Whether the approximately 10 second report is an extreme instance of the same Defender path or a distinct slow-launch mode.
 
 ## Diagnostic code and artifacts
 
