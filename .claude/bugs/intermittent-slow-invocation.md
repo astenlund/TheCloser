@@ -6,6 +6,8 @@ Open, with two pre-`Main` delay components identified. One retained Windows Perf
 
 An exact contextual Defender exclusion remains a useful partial mitigation, but it would have removed only 655.392 ms of the second occurrence. It cannot make invocation reliable by itself. The temporary scheduled task `TheCloser Launch Trace (Temporary)` remains registered. After removing minifilter stack capture to retain more early scheduling history, the task armed `.tmp/TheCloser-auto-20260828-204631.etl` with monitor PID 32076. The earlier report of an approximately 10 second launch has not been captured and may be an extreme instance of the pre-image process-creation mode or another mode.
 
+The daemon IPC fix design was agreed on 2026-08-28 and is recorded in the fix design section below; implementation has not started.
+
 ## Symptom
 
 - The first TheCloser activation after an idle interval can feel delayed. Reported cases range from noticeable sub-second pauses to about 10 seconds.
@@ -129,19 +131,112 @@ A guarded end-to-end check against sacrificial WinForms windows passed both keyb
 - What blocks AutoHotkey's `CreateProcess` call for 1784.354 ms before any open of the target executable.
 - Whether the approximately 10 second report is an extreme instance of the same pre-image process-creation path or a distinct slow-launch mode.
 
-## Selected direction and next-session handoff
+## Selected direction
 
-On 2026-08-28, the user selected daemon IPC as the fix direction. The goal is to avoid launching a new executable on the normal activation path, which removes both measured sources of variability: the Windows process-creation path and the synchronous Defender scan. An exact contextual Defender exclusion remains an optional partial mitigation, not the selected primary fix, and no Defender setting has been changed.
+On 2026-08-28, the user selected daemon IPC as the fix direction. The goal is to avoid launching a new executable on the normal activation path, which removes both measured sources of variability: the Windows process-creation path and the synchronous Defender scan. An exact contextual Defender exclusion remains an optional partial mitigation, not the selected primary fix, and no Defender setting has been changed. The agreed design is recorded in the fix design section below.
 
-The next session should begin with design rather than further launch optimization. It must settle these still-open boundaries before implementation:
+The current 128 MB automatic WPR trace can remain armed while implementation proceeds. If it captures another slow launch before the IPC fix lands, preserve and analyze the ETL using the existing resume procedure. Once daemon IPC is deployed and verified, remove the scheduled task and temporary diagnostic code using the cleanup procedure below.
 
-- The IPC transport and message contract between AutoHotkey or a thin wrapper and the daemon.
-- Whether the invocation layer transmits cursor and trigger context or the daemon samples the live desktop state.
-- Which existing responsibilities move into the daemon, including throttling, the guard mutex, configuration loading, foreground activation, timeout repair, and trigger-button healing.
-- Whether invocation is fire-and-forget or acknowledged, including timeout, duplicate-request, daemon-unavailable, and daemon-restart behavior.
-- How the normal AutoHotkey path, any thin-wrapper fallback, elevation boundaries, deployment, graceful shutdown, and configuration changes remain compatible.
+## Fix design: daemon IPC activation
 
-The current 128 MB automatic WPR trace can remain armed while that design proceeds. If it captures another slow launch before the IPC fix lands, preserve and analyze the ETL using the existing resume procedure. Once daemon IPC is deployed and verified, remove the scheduled task and temporary diagnostic code using the cleanup procedure below.
+Agreed on 2026-08-28. This section is the governing design for the fix.
+
+### Activation flow
+
+The normal activation path launches no executable. On a trigger press, the AutoHotkey script writes a small payload into the existing shared memory-mapped file and signals a new session-local named auto-reset event, `TheCloserActivationEvent`. The daemon's main loop becomes a `WaitAny` over the exit event and the activation event with the existing 5 second timeout; the timeout branch keeps the crash-repair watchdog unchanged. On activation the daemon samples the cursor itself and runs the close pipeline in-process. The daemon wakes in well under a millisecond, so the cursor cannot move meaningfully between the press and the sample; nothing position-related needs transmitting.
+
+Invocation is fire-and-forget. Nothing in the AutoHotkey layer can usefully consume an acknowledgment, and the fallback decision needs only the existence check described next.
+
+Fallback: if `OpenEvent` fails for any reason (name absent because no daemon is running, or access denied in an unsupported mixed-elevation configuration), the script runs `TheCloser.exe` exactly as today. That press pays today's slow path but always works, and the launched app starts the daemon, so the next press is fast. `TheCloser.exe` remains a fully functional standalone entry point; its `Program.cs` flow is unchanged.
+
+Daemon-down detection is exact because named kernel events vanish when the owning process's last handle closes: `OpenEvent` failing cannot false-positive. To preserve that property the script opens and closes every handle per press and never caches one; a cached handle in the long-lived AutoHotkey process would pin the object past the daemon's death, breaking both the detection and the invariant that named MMFs vanish with their last handle. A hung (not dead) daemon still holds its event, so a press signals successfully and is lost; that is the same exposure class as the current hung-daemon MMF pin, and the watchdog's per-iteration exception isolation keeps it unlikely.
+
+### Shared state layout and message contract
+
+The MMF (`TheCloserSharedState`, 1024 bytes) gains an activation payload region. Complete layout and every consumer's handling:
+
+| Offset | Size | Field | Writers | Readers |
+|---|---|---|---|---|
+| 0 | 8 | Throttle tick (`Environment.TickCount64`) | App on fallback runs; daemon on IPC activations | App and daemon; both paths throttle each other, threshold 200 ms unchanged |
+| 8 | 4 | Repair flag | `TimeoutRepair`/`CrashRepair` via both paths | Both paths; semantics unchanged |
+| 12 | 4 | Saved foreground lock timeout | Same as repair flag | Same as repair flag; semantics unchanged |
+| 16 | 8 | Launch QPC (raw `QueryPerformanceCounter` at press time) | AutoHotkey, before signaling | Daemon, for the per-activation latency log line only. The fallback path does not read it; the app keeps receiving its QPC via the existing `--probe-launch-qpc` argument |
+| 24 | 4 | Trigger button code (0 = unknown, 1 = XButton2) | AutoHotkey, before signaling | Daemon, for logging only. `TriggerButtonHealer` does not consume it; the healer monitors its fixed middle/X1/X2 set regardless |
+
+The event signal is the payload-ready flag: the script writes values, then calls `SetEvent`, and the daemon reads only after waking, mirroring the value-before-flag discipline the repair record already documents. Two rapid presses can overwrite the payload before the daemon reads it; that is last-writer-wins and harmless because the 200 ms throttle makes the earlier press a no-op. The auto-reset event collapses N presses into one pending wake, matching today's semantics where extra launches exit on the throttle.
+
+Latency logging: the daemon logs elapsed time from the payload QPC to handler entry on every activation. This permanently replaces what the temporary `InvocationProbe` measured on the IPC path and is the fix's verification instrument. Empty and implausible branch: if the QPC value is zero (payload never written), non-positive, in the future, or implies a latency above 10 seconds (stale value from an earlier press after a failed mapping), the daemon logs the activation with latency unavailable instead of a number.
+
+### Responsibility placement
+
+Every responsibility of the current app `Main`, and where it runs on each path:
+
+| Responsibility | IPC path (daemon) | Fallback path (app) |
+|---|---|---|
+| Guard mutex | Acquired with `WaitOne(0)` around each close; busy means a fallback instance is mid-close, so the press is skipped and logged. `AbandonedMutexException` counts as acquired. Released before healer dispatch, mirroring the app's release-before-linger | Unchanged |
+| Pending-repair restore | After acquiring the guard mutex, if a repair record is pending, restore it before closing (mirrors the app's startup restore; holding the mutex prevents races). The watchdog branch additionally covers it every 5 s as today | Unchanged |
+| 200 ms throttle | Read tick, skip and log if within threshold, else write tick and proceed. The threshold constant moves to `Constants` so both paths share it | Unchanged |
+| Daemon ensure and pin wait | Not applicable | Unchanged |
+| Configuration | Loaded once at daemon start with `reloadOnChange: true`; see configuration section | Unchanged (fresh read per run) |
+| Close pipeline (`WindowCloser`, `ForegroundActivator`, `ForegroundLockSuppression`, timeout repair) | Runs in-process, exception-isolated per activation so a failed close never kills the daemon | Unchanged |
+| Trigger-button healing | Dispatched as a background task after an attach-performing close so the up-to-2 s linger never blocks the next activation. Overlapping healer tasks match today's semantics: the app already releases the guard mutex before lingering, so concurrent healers are possible today and remain possible | Unchanged |
+
+The daemon loop stays single-threaded: the watchdog iteration and the activation handler are branches of one `WaitAny` loop, so the guard mutex is acquired and released on one thread and the only new concurrency is the healer task.
+
+### Code layout
+
+These types move from `TheCloser` to `TheCloser.Shared` (which already targets the windows TFM and is AOT-compatible): `WindowCloser`, `ForegroundActivator`, `IForegroundActivator`, `INativeWindowApi`, `NativeWindowApi`, `NativeMethods`, `ProcessSettingsParser`, `ProcessSettings`, `TitleBarClickPosition`, `TriggerButtonHealer`. `TheCloser` keeps `Program` and `InvocationProbe`. Each moved type keeps its current visibility; `TheCloser.Shared` gains `InternalsVisibleTo` entries for `TheCloser` and `TheCloser.Daemon` alongside the existing `TheCloser.Tests` entry. The package references `GregsStack.InputSimulatorStandard`, `Microsoft.Extensions.Configuration`, and `Microsoft.Extensions.Configuration.Json` move from `TheCloser.csproj` to `TheCloser.Shared.csproj`; the app and daemon consume them transitively.
+
+`TriggerButtonHealer`'s header comment currently states it is deliberately app-hosted with no daemon backstop; that rationale is superseded and the comment must be rewritten in the move to describe the two hosting paths.
+
+The daemon gains an activation-handler unit shaped for testability with injectable delegates and GUID-suffixed kernel object names, following the existing `CrashRepair`/`TimeoutRepair` seam pattern. New constants (`ActivationEventName`, payload offsets, button codes, the shared throttle threshold) go to `Constants.cs`; new `SharedState` accessors follow the existing accessor discipline.
+
+### Invocation layer (TheCloser.ahk)
+
+The script gains `#SingleInstance Force` so any manual or overlapping start silently replaces the running instance instead of popping the replace dialog.
+
+Auto-execute section: on script start, run `TheCloser.Daemon.exe --start` fire-and-forget. The daemon's single-instance mutex makes this idempotent, elevation is inherited from the elevated script, and the launch cost lands at logon or deploy time, off the press path. This removes the one remaining routinely slow press (the first press after logon or deploy, which would otherwise take the fallback).
+
+The trigger handler, in order: capture QPC; `OpenEvent` with `EVENT_MODIFY_STATE`; on failure, run `TheCloser.exe` with the existing `--probe-launch-qpc` argument exactly as today and return; otherwise `OpenFileMapping` with `FILE_MAP_WRITE` plus `MapViewOfFile`, `NumPut` the QPC at offset 16 and button code 1 at offset 24, unmap and close the mapping; `SetEvent`; close the event handle. If the mapping unexpectedly fails while the event opened, skip the payload writes and still signal: the daemon then closes normally and logs latency unavailable via the plausibility guard. One narrow race is accepted: the daemon can exit between `OpenEvent` and `SetEvent`, dropping that press; the window is microseconds and the next press falls back.
+
+Elevation: the deployed chain keeps every party elevated (elevated script; daemon inheriting elevation through the auto-execute launch or the fallback launch). Mixed-elevation development scenarios degrade safely because any open failure, access denied included, takes the fallback path.
+
+### Daemon lifecycle
+
+- Startup order: pin the MMF, create the activation event, publish the daemon mutex. The mutex remains the pinned-and-ready proof for the app's pin wait. The event existing slightly before the loop enters `WaitAny` loses nothing: an auto-reset event holds its signaled state until waited on.
+- A second daemon instance briefly co-owns the named event, then exits on the existing single-instance mutex check and closes its handles; harmless.
+- Graceful shutdown via `--stop` and the exit event is unchanged.
+- Daemon killed mid-close: the repair record dies with the daemon's MMF pin, stranding the foreground lock timeout until reboot if the kill lands inside the sub-second SPI window. This is the same class as the accepted residual risk already documented in CLAUDE.md (app killed while no daemon pins), with the roles swapped, and is accepted alongside it. The common failure, an exception inside the pipeline, is handled in-process and restores normally.
+
+### Configuration
+
+The daemon builds the same `ConfigurationBuilder` as the app but with `reloadOnChange: true`, giving `FileSystemWatcher`-driven hot reload with the existing manual section parsing, which is what keeps the path AOT-clean (no reflection binding, no options/DI packages). Edits to `appsettings.json` take effect from roughly a quarter second after the write, preserving today's edit-then-next-press-works behavior. (live-claim: provisional) The reload watcher's reliability on the synced deploy folder is unverified; if it proves flaky during implementation, the agreed fallback is a last-write-time comparison per activation, reloading only on change.
+
+### Deployment
+
+`deploy.ps1` takes over invocation-layer restarts so AutoHotkey script changes no longer require manually re-running `install-elevated-ahk.ps1`:
+
+- After copying files, if the scheduled task `TheCloser AutoHotkey (elevated)` exists: `Stop-ScheduledTask` (terminates the running elevated script instance), then `Start-ScheduledTask` (fresh elevated instance reading the just-copied script, whose auto-execute section also starts the freshly deployed daemon). Stop-then-start is required rather than a bare start because the task runs with the default `IgnoreNew` multiple-instances policy and its logon instance stays running indefinitely, so a bare `Start-ScheduledTask` would be silently ignored. (live-claim: provisional) That an unelevated shell may stop and start a Highest-run-level task it owns is verified for start by established practice but unverified for stop; if stop requires elevation, the fallback is folding the stop and start into the same self-elevated child that already handles the stubborn daemon stop, costing one UAC prompt per deploy.
+- If the task does not exist (first deploy on a machine): self-elevate a child that runs `install-elevated-ahk.ps1`, reusing deploy's existing elevation pattern. One UAC prompt, once per machine.
+
+`install-elevated-ahk.ps1` drops the `-StartNow` switch and performs unconditionally: register the task, sweep away any script instance running outside the task, start the task. It keeps shipping to the deploy target for use on other machines.
+
+### Testing
+
+- The moved close-pipeline types keep their existing tests (`WindowCloserTests`, `ForegroundActivatorTests`, `TriggerButtonHealerTests`, `ProcessSettingsParserTests`); those passing after the namespace move is the regression net for the relocation.
+- New unit tests: the `SharedState` activation region (round-trip, zero state, GUID-suffixed names via `TestNames`, mirroring `SharedStateTests`) and the activation handler via injected delegates (throttle skip, busy-guard-mutex skip, pending-repair restore, payload plausibility branches, exception isolation, healer dispatch decision).
+- End-to-end via the `verify` skill against sacrificial windows, extended to drive the IPC path by signaling the real activation event, plus one real-press check of the daemon's latency log line.
+- One behavior verified explicitly rather than assumed: foreground activation from the long-lived daemon behaves like today's short-lived app. Both are background processes when calling `SetForegroundWindow`, and the activation ladder plus suppression exists for exactly that position, so equivalence is expected but must be observed e2e.
+
+### Verification criteria
+
+- Daemon latency log shows press-to-handler latency in the low single-digit milliseconds where today's slow mode measured 702 to 2455 ms.
+- IPC-path closes work e2e; fallback-path closes work with the daemon stopped; a press with the daemon stopped starts it for the next press.
+- A deploy with an edited `TheCloser.ahk` results in the new script running elevated with no manual step.
+
+### Out of scope
+
+Code signing, Defender exclusions, and further launch-time optimization of the fallback path (the investigation sections above record why). Retiring `InvocationProbe`, the WPR scheduled task, and the temporary diagnostic scripts happens only after the IPC path is verified, per the cleanup procedure below.
 
 ## Diagnostic code and artifacts
 
