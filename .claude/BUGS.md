@@ -42,7 +42,7 @@ consult `BUGS_HISTORY.md`.
 
 ## Open
 
-### Intermittent slow invocation after idle
+### [Intermittent slow invocation after idle](bugs/intermittent-slow-invocation.md)
 
 The first invocation after an idle interval sometimes spends hundreds of milliseconds or several seconds before entering managed `Main`; later invocations are usually fast. Retained traces identified both a synchronous Defender scan and a separate pre-image Windows process-creation delay. Daemon IPC is the selected fix direction so normal activation avoids launching a process. Investigation evidence, diagnostic state, open design boundaries, and resume instructions live in the [running investigation report](bugs/intermittent-slow-invocation.md).
 
