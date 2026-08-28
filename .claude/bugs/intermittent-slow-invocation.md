@@ -92,7 +92,7 @@ The temporary scheduled task has these verified properties:
 - Highest run level with an interactive token.
 - Hidden PowerShell 7 action that calls `.tmp/manage-launch-trace-task.ps1 -Action Arm`.
 - `IgnoreNew` multiple-instance policy, so an existing arm is not duplicated.
-- Ready state after registration. It was not started manually because the current trace was already armed.
+- Current running state while `.tmp/TheCloser-auto-20260828-204631.etl` is armed. The current arm was started manually after the prior trace auto-stopped; the logon trigger re-arms it after a reboot.
 
 ## Current deployed state
 
@@ -120,6 +120,7 @@ A guarded end-to-end check against sacrificial WinForms windows passed both keyb
 - Windows did not create the captured process until the Defender scan completed, so application scheduling, loader work, daemon discovery, configuration, and window-closing logic cannot explain that sample's pause.
 - Hard faults and storage I/O did not contribute measurable work in the captured trigger interval.
 - A contextual Defender exclusion cannot eliminate every slow occurrence. It would have removed only 655.392 ms of the captured 2455.128 ms launch.
+- ReadyToRun and JIT tuning do not address the captured delays because the deployed executable already uses Native AOT and reached managed `Main` only 8.303 ms after process creation. Native AOT size optimization might shorten some byte-scanning work, but it cannot remove the Defender scan or the pre-image `CreateProcess` wait.
 
 ### Open
 
@@ -127,7 +128,20 @@ A guarded end-to-end check against sacrificial WinForms windows passed both keyb
 - Whether trusted code signing prevents or materially shortens the scan without requiring a Defender exclusion.
 - What blocks AutoHotkey's `CreateProcess` call for 1784.354 ms before any open of the target executable.
 - Whether the approximately 10 second report is an extreme instance of the same pre-image process-creation path or a distinct slow-launch mode.
-- Whether moving invocation over IPC to the already-running daemon is preferable to continuing to depend on synchronous process creation for every activation.
+
+## Selected direction and next-session handoff
+
+On 2026-08-28, the user selected daemon IPC as the fix direction. The goal is to avoid launching a new executable on the normal activation path, which removes both measured sources of variability: the Windows process-creation path and the synchronous Defender scan. An exact contextual Defender exclusion remains an optional partial mitigation, not the selected primary fix, and no Defender setting has been changed.
+
+The next session should begin with design rather than further launch optimization. It must settle these still-open boundaries before implementation:
+
+- The IPC transport and message contract between AutoHotkey or a thin wrapper and the daemon.
+- Whether the invocation layer transmits cursor and trigger context or the daemon samples the live desktop state.
+- Which existing responsibilities move into the daemon, including throttling, the guard mutex, configuration loading, foreground activation, timeout repair, and trigger-button healing.
+- Whether invocation is fire-and-forget or acknowledged, including timeout, duplicate-request, daemon-unavailable, and daemon-restart behavior.
+- How the normal AutoHotkey path, any thin-wrapper fallback, elevation boundaries, deployment, graceful shutdown, and configuration changes remain compatible.
+
+The current 128 MB automatic WPR trace can remain armed while that design proceeds. If it captures another slow launch before the IPC fix lands, preserve and analyze the ETL using the existing resume procedure. Once daemon IPC is deployed and verified, remove the scheduled task and temporary diagnostic code using the cleanup procedure below.
 
 ## Diagnostic code and artifacts
 
