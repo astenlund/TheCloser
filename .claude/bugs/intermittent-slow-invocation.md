@@ -19,7 +19,7 @@ The current goal is root-cause identification, not mitigation. Do not add exclus
 
 The invocation probe receives a `QueryPerformanceCounter` value immediately before AutoHotkey calls `Run`, then records the first timestamp inside managed `Main`. Slow samples spend nearly all extra time between those boundaries. Once `Main` begins, daemon discovery, configuration, and window closing remain near their normal durations.
 
-The daemon was alive in the captured slow samples. Moving logger file writes to a queue in `c699802` removed synchronous file logging from the invocation path, but slow launches still occurred.
+The daemon was alive in the captured slow samples. Moving logger file writes to a queue in `f668ff4` removed synchronous file logging from the invocation path, but slow launches still occurred.
 
 ### 2026-08-27 asymmetric sample
 
@@ -91,8 +91,8 @@ A guarded end-to-end check against sacrificial WinForms windows passed both keyb
 ## Diagnostic code and artifacts
 
 - `7a791b5`: startup checkpoint probe and `%TEMP%\TheCloser.Probe.log`.
-- `c699802`: asynchronous queued logger writes.
-- `4199e2a` and `e21f9b4`: temporary paired-launch comparison, retired after observing one near-concurrent activation where both locations were slow.
+- `f668ff4`: asynchronous queued logger writes.
+- `451825d` and `9556455`: temporary paired-launch comparison; `41f7dd4` retired it after one near-concurrent activation showed both locations were slow.
 - `.tmp/Minifilter.wprp`: lean 128 MB memory trace profile.
 - `.tmp/start-launch-trace-elevated.ps1`: elevated WPR start, log monitor, and automatic stop.
 - `.tmp/manage-launch-trace-task.ps1`: temporary task install, logon arm, and cleanup entry point.
