@@ -18,13 +18,15 @@ The governing design is the `## Fix design: daemon IPC activation` section of `.
 
 ## Global Constraints
 
-- All commands below run under **PowerShell 7 (`pwsh -NoProfile`)** unless a step names another shell. Every command is self-contained; no shell state carries between steps.
+- All commands below run under **PowerShell 7 (`pwsh -NoProfile`)** unless a step names another shell. Every command is self-contained; no shell state carries between steps. Where a step builds and then tests on one line, the two are joined with `&&`, never `;`: PowerShell's `;` does not short-circuit, and `dotnet test --no-build` would then run the previous task's still-present assembly and print a pass over a failed build.
 - Build with `dotnet build C:/Git/TheCloser --no-incremental`; run tests with `dotnet test C:/Git/TheCloser/TheCloser.Tests --no-build --filter "<filter>"`. Never run the full unfiltered suite.
 - No em-dashes, en-dashes, or emoji in any generated text. All new file content is pure ASCII; after editing `TheCloser.ahk` or any file where escape sequences matter, byte-sweep with `rg --crlf -n "[^ -~\t]" <file>` (Git Bash) and expect zero matching lines.
 - Kernel object names stay session-local (no `Global\` prefix) and centralized in `TheCloser.Shared/Constants.cs`; the one sanctioned non-C# copy is `TheCloser.ahk`, comment-marked at every duplication site.
 - Commit subjects follow Conventional Commits, max 72 chars, subject-only (no body, no Co-Authored-By trailer).
 - C# style: blank line before `return`, block braces always, `required` first, pattern matching and collection expressions where natural, Arrange/Act/Assert comments in tests, no `.ToLower()` comparisons.
-- The plan file itself is never staged in any implementation commit.
+- The plan file itself is never staged in any implementation commit: a commit step either stages with the plan-excluding pathspec `git add -A -- ':!.claude/plans'` or names its single file explicitly (the three invocation-layer commits stage `TheCloser.ahk`, `install-elevated-ahk.ps1`, and `deploy.ps1` by name).
+- Deliberate deferral: the spec's strongly preferred co-requisite, the "Logger rotation only runs at construction" quick win, is NOT part of this plan; unbounded daemon-log growth is the accepted interim per the spec, and that quick win lands as its own change.
+- Deliberate deferral: deploy.ps1's existing daemon hard-kill stays as-is in this plan's deploy edits; replacing it with a graceful `--stop` plus `Wait-Process` inside the same elevated child is the deploy-side half of a queued quick win per the spec (its app-side half is superseded by the daemon IPC shape), landing as its own change.
 - Tests must never touch the real kernel object names or the real SystemParametersInfo setting: every test uses GUID-suffixed names via the existing `TestNames` helper and injected delegates.
 
 ---
@@ -37,6 +39,7 @@ The governing design is the `## Fix design: daemon IPC activation` section of `.
 | `TheCloser.Shared/Constants.cs` | Gains `ActivationEventName`, button codes, shared throttle threshold |
 | `TheCloser.Shared/SharedState.cs` | Gains activation payload accessors (offsets 16/24, consume-once) |
 | `TheCloser.Shared/LastGoodConfiguration.cs` (new) | Per-activation value-copy snapshot of the live configuration root |
+| `TheCloser.Shared/DaemonConfiguration.cs` (new) | Builds the daemon's hot-reloading configuration root with logged, swallowed parse failures |
 | `TheCloser.Shared/ActivationHandler.cs` (new) | Per-activation orchestration: payload, latency and deferred marker, throttle, guard mutex, pending repair, close dispatch, healer dispatch decision |
 | `TheCloser.Shared/DaemonRuntime.cs` (new) | Daemon lifetime: startup order, WaitAny loop, watchdog tick, final repair tick, healer tracking and drain, unwind |
 | `TheCloser.Daemon/Program.cs` | Thin composition root wiring DaemonRuntime with real config, pipeline, healer |
@@ -121,16 +124,25 @@ In `TheCloser.Shared/TheCloser.Shared.csproj`, replace the whole file with:
 
 - [ ] **Step 5: Fix test-project usings**
 
-Run (Git Bash) to find affected files:
-```bash
-grep -l "TheCloser\.\(WindowCloser\|ForegroundActivator\|NativeMethods\|TriggerButtonHealer\|ProcessSettingsParser\|TitleBarClickPosition\)" /c/Git/TheCloser/TheCloser.Tests/*.cs; grep -ln "^using TheCloser;$" /c/Git/TheCloser/TheCloser.Tests/*.cs
-```
-In each listed file, the moved types now resolve through `using TheCloser.Shared;` (add it if absent). Keep `using TheCloser;` only in files that still reference `Program` or `InvocationProbe` (`InvocationProbeTests.cs`); remove it where it becomes unused. `using static TheCloser.NativeMethods;` becomes `using static TheCloser.Shared.NativeMethods;` and `using static TheCloser.TitleBarClickPosition;` becomes `using static TheCloser.Shared.TitleBarClickPosition;` wherever they appear under `TheCloser.Tests/`.
+The affected files, enumerated against the pre-move tree (do not rediscover by grep: no test file carries a `using TheCloser;` directive; moved-type references resolve through the enclosing `TheCloser` namespace of `namespace TheCloser.Tests;`, a resolution the move silently breaks). Per-file edits:
+
+- `WindowCloserTests.cs`: no edit (it already has `using TheCloser.Shared;` and no using-static lines).
+- `ForegroundActivatorTests.cs`: already has `using TheCloser.Shared;`; rewrite `using static TheCloser.NativeMethods;` to `using static TheCloser.Shared.NativeMethods;` and `using static TheCloser.TitleBarClickPosition;` to `using static TheCloser.Shared.TitleBarClickPosition;`.
+- `TriggerButtonHealerTests.cs`: add `using TheCloser.Shared;` above the using-static block, and rewrite `using static TheCloser.NativeMethods;` to `using static TheCloser.Shared.NativeMethods;`.
+- `ProcessSettingsParserTests.cs`: add `using TheCloser.Shared;` after `using Microsoft.Extensions.Configuration;`.
+
+`InvocationProbeTests.cs` needs no edit: it tests the app-side `InvocationProbe`, still reached through the enclosing namespace. Then verify the edits landed:
+
+Run (Git Bash): `grep -ln "^using TheCloser.Shared;$" /c/Git/TheCloser/TheCloser.Tests/WindowCloserTests.cs /c/Git/TheCloser/TheCloser.Tests/ForegroundActivatorTests.cs /c/Git/TheCloser/TheCloser.Tests/TriggerButtonHealerTests.cs /c/Git/TheCloser/TheCloser.Tests/ProcessSettingsParserTests.cs`
+Expected: all four files listed.
+
+Run (Git Bash): `grep -rnF -e "using static TheCloser.NativeMethods;" -e "using static TheCloser.TitleBarClickPosition;" /c/Git/TheCloser/TheCloser.Tests/`
+Expected: no output, exit code 1 (the `.Shared.` forms do not match these fixed strings). Completeness beyond the usings is gated by Step 6's build: any remaining bare reference to a moved type fails compilation, because the enclosing-namespace resolution no longer reaches it.
 
 - [ ] **Step 6: Build and run the relocation regression net**
 
 Run: `dotnet build C:/Git/TheCloser --no-incremental`
-Expected: Build succeeded, 0 warnings attributable to the move.
+Expected: Build succeeded, `0 Warning(s)` (the pre-plan tree builds with zero warnings, verified while writing the plan, so zero is the literal bar).
 
 Run: `dotnet test C:/Git/TheCloser/TheCloser.Tests --no-build --filter "FullyQualifiedName~WindowCloserTests|FullyQualifiedName~ForegroundActivatorTests|FullyQualifiedName~TriggerButtonHealerTests|FullyQualifiedName~ProcessSettingsParserTests"`
 Expected: all listed tests pass, none skipped.
@@ -138,7 +150,7 @@ Expected: all listed tests pass, none skipped.
 - [ ] **Step 7: Commit**
 
 ```bash
-git -C C:/Git/TheCloser add -A && git -C C:/Git/TheCloser commit -m "refactor(shared): relocate close pipeline for daemon hosting"
+git -C C:/Git/TheCloser add -A -- ':!.claude/plans' && git -C C:/Git/TheCloser commit -m "refactor(shared): relocate close pipeline for daemon hosting"
 ```
 
 ---
@@ -196,8 +208,8 @@ If `TestNames` has no `UniqueMapName()` member, use the file's existing unique-m
 
 - [ ] **Step 2: Run to verify failure**
 
-Run: `dotnet build C:/Git/TheCloser --no-incremental; dotnet test C:/Git/TheCloser/TheCloser.Tests --no-build --filter "FullyQualifiedName~SharedStateTests"`
-Expected: build FAILS with CS0117 (`SharedState` contains no definition for `WriteActivationPayload`) before any test runs; that compile failure is this step's red state.
+Run: `dotnet build C:/Git/TheCloser --no-incremental`
+Expected: FAIL with CS1061 (`SharedState` contains no definition for `WriteActivationPayload`, an instance-member call) and CS0117 (`Constants` contains no definition for `TriggerButtonXButton2` / `TriggerButtonUnknown`, static-member accesses); that compile failure is this step's red state. The build runs alone here: chaining a test run after it with `;` would not short-circuit in PowerShell, and `--no-build` would then execute Task 1's still-present assembly, printing a green pass over the red state.
 
 - [ ] **Step 3: Implement**
 
@@ -210,10 +222,25 @@ In `TheCloser.Shared/Constants.cs`, after the line `public const string ProbeLog
     // Shared between the app's fallback path and the daemon's IPC path.
     public const long ThrottleThresholdMs = 200;
 
-    // Trigger button codes for the activation payload. Duplicated by hand in TheCloser.ahk.
+    // Trigger button codes for the activation payload. Duplicated by hand in TheCloser.ahk
+    // (AutoHotkey cannot consume this file); keep in sync.
     public const int TriggerButtonUnknown = 0;
     public const int TriggerButtonXButton2 = 1;
 ```
+
+Then mark the two pre-existing constants that Task 8 makes the AutoHotkey script a second holder of, so every duplication site carries the comment the spec's cross-language contract requires. Prefix each of these existing lines with the comment shown:
+
+```csharp
+    // Duplicated by hand in TheCloser.ahk (AutoHotkey cannot consume this file); keep in sync.
+    public const string DaemonMutexName = "TheCloserDaemonMutex";
+```
+
+```csharp
+    // Duplicated by hand in TheCloser.ahk (AutoHotkey cannot consume this file); keep in sync.
+    public const string MemoryMappedFileName = "TheCloserSharedState";
+```
+
+(The lines themselves are unchanged; only the comment above each is new. `DaemonExitEventName` and `GuardMutexName` stay unmarked: the script never names them.)
 
 In `TheCloser.Shared/SharedState.cs`, after `private const int RepairPending = 1;`, insert:
 
@@ -252,13 +279,13 @@ In `TheCloser/Program.cs`, delete the line `private const long StartupIntervalTh
 
 - [ ] **Step 4: Run to verify pass**
 
-Run: `dotnet build C:/Git/TheCloser --no-incremental; dotnet test C:/Git/TheCloser/TheCloser.Tests --no-build --filter "FullyQualifiedName~SharedStateTests|FullyQualifiedName~InvocationProbeTests"`
+Run: `dotnet build C:/Git/TheCloser --no-incremental && dotnet test C:/Git/TheCloser/TheCloser.Tests --no-build --filter "FullyQualifiedName~SharedStateTests|FullyQualifiedName~InvocationProbeTests"`
 Expected: PASS, all cases.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git -C C:/Git/TheCloser add -A && git -C C:/Git/TheCloser commit -m "feat(shared): activation payload region and shared constants"
+git -C C:/Git/TheCloser add -A -- ':!.claude/plans' && git -C C:/Git/TheCloser commit -m "feat(shared): activation payload region and shared constants"
 ```
 
 ---
@@ -392,44 +419,76 @@ with
 ```
 (Note: `TryActivateNatively` still returns `IsForeground(targetWindow)` after the settle sleep; do not change that tail.)
 
+Two comments in this region are deliberately untouched by the block above, which shows method bodies only. Keep the four-line rationale comment that sits between the two methods in the shipped file, beginning `// Foreground rights belong to the thread that received the user's last input (the current` and ending `// the owner shares the target's thread: the target attach already covers that queue.`, exactly as it is: it explains why the owner attach exists, and the signature change does not affect it. Splice the new bodies around it rather than pasting over the span.
+
 - [ ] **Step 2: Update the fake and add the new test**
 
-In `TheCloser.Tests/ForegroundActivatorTests.cs`, update the `FakeNativeApi` members to the new signatures: attach returns a configurable nonzero thread id per window (for example `AttachResults` dictionary from window to id, default 1), detach records the ids it was called with in a `DetachedThreadIds` list and returns a configurable bool. Then add:
+In `TheCloser.Tests/ForegroundActivatorTests.cs`, update exactly two `FakeNativeApi` members. Under the id-recording detach, any test that leaves `ThreadIdOf` at its default `handle => (uint)handle` keeps its recorded strings (`detach:200`, `detach:100`); exactly one existing case overrides `ThreadIdOf` and is updated below.
 
 ```csharp
-[Fact]
-public void TryActivate_DetachesByCapturedIds_AndLogsFailedDetach()
-{
-    // Arrange: native activation path with distinct target and owner thread ids, and a detach
-    // that fails, simulating a target window destroyed mid-close.
-    var native = new FakeNativeApi { /* configure: target attach id 42, owner attach id 7, DetachReturns = false, foreground transitions so TryActivateNatively runs */ };
-    var log = new List<string>();
-    var activator = new ForegroundActivator(sharedState, TestLogger(log), native, _ => { }, () => FakeSuppression());
+        public bool DetachSucceeds { get; set; } = true;
 
-    // Act
-    activator.TryActivate(SomeWindow, TitleBarClickPosition.Left);
+        public uint AttachThreadInput(IntPtr hWnd)
+        {
+            Calls.Add($"attach:{hWnd}");
 
-    // Assert: both captured ids were detached (never re-resolved from the window), and the
-    // failed returns were logged rather than discarded.
-    Assert.Contains(42u, native.DetachedThreadIds);
-    Assert.Contains(7u, native.DetachedThreadIds);
-    Assert.Contains(log, line => line.Contains("DetachThreadInput(42)"));
-}
+            return AttachSucceeds ? ThreadIdOf(hWnd) : 0;
+        }
+
+        public bool DetachThreadInput(uint threadId)
+        {
+            Calls.Add($"detach:{threadId}");
+
+            return DetachSucceeds;
+        }
 ```
-Adapt constructor arguments and fixture helpers to the file's existing patterns (it already builds `ForegroundActivator` with an injected fake, sleep, and suppression factory); the assertions above are the contract.
+(The `DetachSucceeds` property is new; the two methods replace the current `bool AttachThreadInput(IntPtr)` / `bool DetachThreadInput(IntPtr)` pair. Do not touch the other fake members.)
 
-- [ ] **Step 3: Run to verify failure, then pass**
+One existing case needs its expectation updated: `TryActivate_OwnerSharesTargetThread_SkipsTheOwnerAttach` overrides `ThreadIdOf` to `_ => 7u`, so the target attach returns thread id 7 and the detach records that captured id. Change its expected array from `new[] { "attach:200", "setForeground:200", "detach:200" }` to `new[] { "attach:200", "setForeground:200", "detach:7" }`. The other four sequence-asserting cases use the default `ThreadIdOf` and pass as written.
+
+Then add one new case, using the class's existing `_tempLogger`/`CreateActivator` fixtures:
+
+```csharp
+    [Fact]
+    public async Task TryActivate_DetachesByCapturedIds_AndLogsFailedDetach()
+    {
+        // Arrange: distinct owner and target thread ids, and detaches that fail, simulating a
+        // target window destroyed mid-close.
+        var native = new FakeNativeApi
+        {
+            ForegroundWindow = OwnerWindow,
+            ThreadIdOf = handle => handle == TargetWindow ? 42u : 7u,
+            DetachSucceeds = false,
+            GetWindowRectSucceeds = false
+        };
+        var activator = CreateActivator(native);
+
+        // Act
+        activator.TryActivate(TargetWindow, Left);
+        await _tempLogger.DrainAsync();
+
+        // Assert: both captured ids were detached (never re-resolved from the window), and the
+        // failed returns were logged rather than discarded.
+        Assert.Contains("detach:42", native.Calls);
+        Assert.Contains("detach:7", native.Calls);
+        Assert.Contains("DetachThreadInput(42)", File.ReadAllText(_tempLogger.LogPath));
+    }
+```
+
+- [ ] **Step 3: Build and run**
+
+(Deliberate TDD deviation, this task only: the seam change is a compile-breaking interface signature change, so no test-first red state is runnable; a test written first fails the build on the fake's old signatures, which exercises no behavior. The runtime gate is the updated shared-thread case plus the new case's failed-detach logging assertions; the captured-id-versus-re-resolve distinction is structural, enforced by the seam no longer accepting a window handle at detach, and is verified by reading the Step 1 diff.)
 
 Run: `dotnet build C:/Git/TheCloser --no-incremental`
-Expected first (before the seam change compiles everywhere): if you wrote the test first the build fails on the fake's old signatures; after implementing, expected: Build succeeded.
+Expected: Build succeeded.
 
 Run: `dotnet test C:/Git/TheCloser/TheCloser.Tests --no-build --filter "FullyQualifiedName~ForegroundActivatorTests"`
-Expected: PASS, including the new case.
+Expected: PASS, including the new case and the updated shared-thread case.
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git -C C:/Git/TheCloser add -A && git -C C:/Git/TheCloser commit -m "fix(activator): detach input queues by captured thread ids"
+git -C C:/Git/TheCloser add -A -- ':!.claude/plans' && git -C C:/Git/TheCloser commit -m "fix(activator): detach input queues by captured thread ids"
 ```
 
 ---
@@ -556,13 +615,13 @@ internal sealed class LastGoodConfiguration
 
 - [ ] **Step 4: Run to verify pass**
 
-Run: `dotnet build C:/Git/TheCloser --no-incremental; dotnet test C:/Git/TheCloser/TheCloser.Tests --no-build --filter "FullyQualifiedName~LastGoodConfigurationTests"`
+Run: `dotnet build C:/Git/TheCloser --no-incremental && dotnet test C:/Git/TheCloser/TheCloser.Tests --no-build --filter "FullyQualifiedName~LastGoodConfigurationTests"`
 Expected: PASS, 3 tests.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git -C C:/Git/TheCloser add -A && git -C C:/Git/TheCloser commit -m "feat(shared): last-good configuration snapshot"
+git -C C:/Git/TheCloser add -A -- ':!.claude/plans' && git -C C:/Git/TheCloser commit -m "feat(shared): last-good configuration snapshot"
 ```
 
 ---
@@ -574,7 +633,7 @@ git -C C:/Git/TheCloser add -A && git -C C:/Git/TheCloser commit -m "feat(shared
 - Test: `TheCloser.Tests/ActivationHandlerTests.cs` (new)
 
 **Interfaces:**
-- Consumes: `SharedState.ConsumeActivationPayload()` (Task 2), `Constants.ThrottleThresholdMs`, `TimeoutRepair.TryRestorePending(SharedState)`.
+- Consumes: `SharedState.ConsumeActivationPayload()` and `Constants.TriggerButtonXButton2` (Task 2), `Constants.ThrottleThresholdMs` (Task 2), and `TimeoutRepair.TryRestorePending(SharedState sharedState, Func<uint, bool>? restore = null)` (the shipped two-parameter signature; the handler wraps it in a one-parameter lambda, never a method-group conversion, which C# rejects across the optional parameter).
 - Produces:
 ```csharp
 internal sealed class ActivationHandler
@@ -587,16 +646,18 @@ internal sealed class ActivationHandler
         Func<IConfiguration, bool> runClose,    // constructs the pipeline fresh, returns attach-performed
         Action dispatchHealer,                  // called when runClose reported an attach
         Func<long>? timestamp = null,           // Stopwatch.GetTimestamp
-        Func<long>? tickCount = null);          // Environment.TickCount64
+        Func<long>? tickCount = null,           // Environment.TickCount64
+        Func<SharedState, bool>? restorePending = null,  // default wraps TimeoutRepair.TryRestorePending
+        long? initialHandlerExit = null);        // daemon start QPC; defaults to construction time
 
     public void HandleActivation();
 }
 ```
-Behavior contract (each clause is a test): consume payload at handler entry; latency line with plausibility guard (zero / non-positive / future / over 10 s logs unavailable, button then logs unknown); deferred marker when a plausible QPC predates the stored handler-exit timestamp (initialized to construction time, refreshed at every handler exit including skips); throttle skip inside threshold (log, no close); guard mutex created unowned per activation, `WaitOne(0)`, busy skips with log, `AbandonedMutexException` counts as acquired, release and dispose in `finally`; pending repair restored after acquiring; throttle tick written before the close; `runClose` exception logged and swallowed; `dispatchHealer` invoked exactly when `runClose` returned true.
+Behavior contract (each clause is a test): consume payload at handler entry; latency line with plausibility guard (zero / non-positive / future / over 10 s logs unavailable, button then logs unknown); deferred marker when a plausible QPC predates the stored handler-exit timestamp (initialized to `initialHandlerExit` when the caller supplies one and to construction time otherwise, refreshed at every handler exit including skips). The spec pins this baseline to the daemon's own start time, and the daemon builds its handler lazily on the first activation, so a caller that lets the baseline default would mark every daemon lifetime's first press deferred; Task 7 supplies the daemon start QPC for exactly that reason; throttle skip inside threshold (log, no close); guard mutex created unowned per activation, `WaitOne(0)`, busy skips with log, `AbandonedMutexException` counts as acquired, release and dispose in `finally`; pending repair restored after acquiring; throttle tick written before the close; `runClose` exception logged and swallowed; `dispatchHealer` invoked exactly when `runClose` returned true.
 
 - [ ] **Step 1: Write the failing tests**
 
-Create `TheCloser.Tests/ActivationHandlerTests.cs`. Before writing, read `TheCloser.Tests/TestNames.cs`, `TheCloser.Tests/TempLogger.cs`, and `TheCloser.Shared/TimeoutRepair.cs`; reuse their exact helper names (the harness below assumes `TestNames.UniqueMapName()` / `TestNames.UniqueMutexName()` and a `TempLogger`-style capturing logger; adapt those two identifiers to the shipped helpers, changing nothing else). The handler takes `restorePending` injected so no test touches SystemParametersInfo.
+Create `TheCloser.Tests/ActivationHandlerTests.cs`. The harness uses the shipped helpers exactly as they exist: `TestNames.UniqueMapName()`, `TestNames.UniqueMutexName()`, and `TempLogger` (whose `DrainAsync()` disposes the wrapped `Logger`, flushing its asynchronous writer, after which the log is read from `LogPath`; log assertions therefore always come last in a test, and each test drains at most once). The handler takes `restorePending` injected so no test touches SystemParametersInfo.
 
 ```csharp
 using System.Diagnostics;
@@ -610,13 +671,16 @@ namespace TheCloser.Tests;
 
 public class ActivationHandlerTests
 {
+    private static readonly TimeSpan WaitBudget = TimeSpan.FromSeconds(5);
+
     private sealed class Harness : IDisposable
     {
         public SharedState State { get; } = new(TestNames.UniqueMapName());
         public string MutexName { get; } = TestNames.UniqueMutexName();
-        public List<string> Log { get; } = [];
+        public TempLogger TempLogger { get; } = new();
         public List<string> Events { get; } = [];
         public long Now = Stopwatch.GetTimestamp();
+        public long? Baseline;                    // null lets the handler default to construction time
         public long Tick = 100_000;
         public bool CloseResult;
         public bool CloseThrows;
@@ -624,7 +688,7 @@ public class ActivationHandlerTests
 
         public ActivationHandler Build() => new(
             State,
-            TestLoggers.Capturing(Log),
+            TempLogger.Logger,
             MutexName,
             settings: () => new ConfigurationBuilder().Build(),
             runClose: _ =>
@@ -641,15 +705,28 @@ public class ActivationHandlerTests
                 Events.Add("restore");
 
                 return RestoreResult;
-            });
+            },
+            initialHandlerExit: Baseline);
 
         public void AdvancePastThrottle() => Tick += ThrottleThresholdMs + 1;
 
-        public void Dispose() => State.Dispose();
+        // Drains (disposes) the logger, then reads the whole log. Call at most once, always last.
+        public async Task<string> ReadLogAsync()
+        {
+            await TempLogger.DrainAsync();
+
+            return File.ReadAllText(TempLogger.LogPath);
+        }
+
+        public void Dispose()
+        {
+            State.Dispose();
+            TempLogger.Dispose();
+        }
     }
 
     [Fact]
-    public void PlausiblePayload_LogsLatencyAndButton()
+    public async Task PlausiblePayload_LogsLatencyAndButton()
     {
         // Arrange
         using var h = new Harness();
@@ -661,11 +738,13 @@ public class ActivationHandlerTests
         handler.HandleActivation();
 
         // Assert
-        Assert.Contains(h.Log, line => line.Contains("Activation: latency") && line.Contains("XButton2"));
+        var log = await h.ReadLogAsync();
+        Assert.Contains("Activation: latency", log);
+        Assert.Contains("XButton2", log);
     }
 
     [Fact]
-    public void ZeroPayload_LogsUnavailableAndUnknownButton()
+    public async Task ZeroPayload_LogsUnavailableAndUnknownButton()
     {
         // Arrange
         using var h = new Harness();
@@ -675,11 +754,13 @@ public class ActivationHandlerTests
         handler.HandleActivation();
 
         // Assert
-        Assert.Contains(h.Log, line => line.Contains("latency unavailable") && line.Contains("unknown"));
+        var log = await h.ReadLogAsync();
+        Assert.Contains("latency unavailable", log);
+        Assert.Contains("unknown", log);
     }
 
     [Fact]
-    public void StalePayloadOverTenSeconds_LogsUnavailable()
+    public async Task StalePayloadOverTenSeconds_LogsUnavailable()
     {
         // Arrange
         using var h = new Harness();
@@ -690,11 +771,11 @@ public class ActivationHandlerTests
         handler.HandleActivation();
 
         // Assert
-        Assert.Contains(h.Log, line => line.Contains("latency unavailable"));
+        Assert.Contains("latency unavailable", await h.ReadLogAsync());
     }
 
     [Fact]
-    public void PlausibleQpcPredatingHandlerExit_LogsDeferredMarker()
+    public async Task PlausibleQpcPredatingHandlerExit_LogsDeferredMarker()
     {
         // Arrange: first activation stamps the handler exit; the second press's QPC predates it.
         using var h = new Harness();
@@ -709,31 +790,57 @@ public class ActivationHandlerTests
         handler.HandleActivation();
 
         // Assert
-        Assert.Contains(h.Log, line => line.Contains("(deferred)"));
+        Assert.Contains("(deferred)", await h.ReadLogAsync());
     }
 
     [Fact]
-    public void FreshPress_AfterThrottleSkip_IsNotMarkedDeferred()
+    public async Task PressPredatingThrottleSkipExit_IsMarkedDeferred()
     {
-        // Arrange: a throttle-skipped activation must still refresh the handler-exit stamp, so a
-        // press issued after the skip judges deferral against the skip's exit, not an older one.
+        // Arrange: a throttle-skipped activation must still refresh the handler-exit stamp. The
+        // press below lands between the first handling's exit and the skip's later exit, so a
+        // correct implementation judges it deferred; one that fails to restamp on the skip path
+        // would compare against the first exit, read the press as fresh, and fail this test.
         using var h = new Harness();
         var handler = h.Build();
-        handler.HandleActivation();          // stamps exit at h.Now
-        handler.HandleActivation();          // throttle skip (Tick unchanged), restamps exit
+        handler.HandleActivation();                        // stamps exit at the initial h.Now
+        var pressAfterFirstExit = h.Now + Stopwatch.Frequency / 100;
+        h.Now += Stopwatch.Frequency / 50;                 // the skip exits 20 ms later
+        handler.HandleActivation();                        // throttle skip (Tick unchanged), restamps exit
         h.AdvancePastThrottle();
-        h.Now += Stopwatch.Frequency / 10;
-        h.State.WriteActivationPayload(h.Now - Stopwatch.Frequency / 100, TriggerButtonXButton2);
+        h.Now += Stopwatch.Frequency / 100;
+        h.State.WriteActivationPayload(pressAfterFirstExit, TriggerButtonXButton2);
 
         // Act
         handler.HandleActivation();
 
         // Assert
-        Assert.DoesNotContain(h.Log, line => line.Contains("(deferred)"));
+        Assert.Contains("(deferred)", await h.ReadLogAsync());
     }
 
     [Fact]
-    public void WithinThrottle_SkipsCloseAndLogs()
+    public async Task PressPredatingConstruction_ButAfterTheSuppliedBaseline_IsNotMarkedDeferred()
+    {
+        // Arrange: the daemon constructs its handler lazily on the first activation, so that
+        // press always predates construction. With the daemon's start time supplied as the
+        // baseline the press reads as fresh; seeding from construction time instead would mark
+        // every daemon lifetime's first press deferred.
+        using var h = new Harness();
+        var daemonStart = h.Now;
+        var press = h.Now + Stopwatch.Frequency / 100;
+        h.Now += Stopwatch.Frequency / 50;        // construction lands 20 ms after the press
+        h.Baseline = daemonStart;
+        var handler = h.Build();
+        h.State.WriteActivationPayload(press, TriggerButtonXButton2);
+
+        // Act
+        handler.HandleActivation();
+
+        // Assert
+        Assert.DoesNotContain("(deferred)", await h.ReadLogAsync());
+    }
+
+    [Fact]
+    public async Task WithinThrottle_SkipsCloseAndLogs()
     {
         // Arrange
         using var h = new Harness();
@@ -745,11 +852,11 @@ public class ActivationHandlerTests
 
         // Assert
         Assert.Single(h.Events, e => e == "close");
-        Assert.Contains(h.Log, line => line.Contains("Activation skipped: the previous handling"));
+        Assert.Contains("Activation skipped: the previous handling", await h.ReadLogAsync());
     }
 
     [Fact]
-    public void BusyGuardMutex_SkipsAndLogs()
+    public async Task BusyGuardMutex_SkipsAndLogs()
     {
         // Arrange: hold the guard mutex on another thread for the duration of the call.
         using var h = new Harness();
@@ -760,20 +867,30 @@ public class ActivationHandlerTests
         {
             using var m = new Mutex(true, h.MutexName, out _);
             held.Set();
-            release.Wait();
+            release.Wait(WaitBudget);
             m.ReleaseMutex();
-        });
+        })
+        {
+            IsBackground = true
+        };
         holder.Start();
-        held.Wait();
+        Assert.True(held.Wait(WaitBudget), "the holder never took the guard mutex");
 
-        // Act
-        handler.HandleActivation();
-        release.Set();
-        holder.Join();
+        // Act, with the release guaranteed even if the act throws, so a failure fails one test
+        // rather than stranding the holder.
+        try
+        {
+            handler.HandleActivation();
+        }
+        finally
+        {
+            release.Set();
+            Assert.True(holder.Join(WaitBudget), "the holder never released the guard mutex");
+        }
 
         // Assert
         Assert.DoesNotContain(h.Events, e => e == "close");
-        Assert.Contains(h.Log, line => line.Contains("guard mutex is held"));
+        Assert.Contains("guard mutex is held", await h.ReadLogAsync());
     }
 
     [Fact]
@@ -811,7 +928,7 @@ public class ActivationHandlerTests
     }
 
     [Fact]
-    public void ThrowingClose_IsLoggedAndSwallowed_AndReleasesMutex()
+    public async Task ThrowingClose_IsLoggedAndSwallowed_AndReleasesMutex()
     {
         // Arrange
         using var h = new Harness();
@@ -823,7 +940,7 @@ public class ActivationHandlerTests
 
         // Assert: the exception is logged, and the handle was released and disposed (a fresh
         // owned create sees a brand-new object).
-        Assert.Contains(h.Log, line => line.Contains("close failed"));
+        Assert.Contains("close failed", await h.ReadLogAsync());
         using var probe = new Mutex(initiallyOwned: true, h.MutexName, out var createdNew);
         Assert.True(createdNew);
         probe.ReleaseMutex();
@@ -848,7 +965,7 @@ public class ActivationHandlerTests
     }
 }
 ```
-`TestLoggers.Capturing(Log)` stands for whatever the existing test suite uses to build a `Logger` whose lines a test can read (`TempLogger` or equivalent); reuse that helper verbatim rather than inventing a new one, and adjust the two harness lines that reference it.
+The harness is complete as written; it uses only shipped helpers.
 
 - [ ] **Step 2: Run to verify failure**
 
@@ -867,8 +984,10 @@ using static TheCloser.Shared.Constants;
 
 namespace TheCloser.Shared;
 
-// Per-activation orchestration for the daemon's IPC path. Mirrors the app Main's responsibility
-// order (payload, throttle, guard mutex, pending repair, close, healer decision); see the fix
+// Per-activation orchestration for the daemon's IPC path: payload and latency first (lock-free),
+// then the throttle (lock-free; the app throttles under its guard mutex instead, which is
+// equivalent because the tick is only ever written under the mutex), then the guard-mutex scope
+// containing pending repair, the tick write, the close, and the healer decision; see the fix
 // design's responsibility table. Instances live for the daemon's lifetime; everything per-press
 // is created inside HandleActivation.
 internal sealed class ActivationHandler
@@ -887,7 +1006,9 @@ internal sealed class ActivationHandler
 
     // Deferred-press attribution state: a plausible payload QPC older than the previous handler
     // exit was collapsed behind that handling. Same clock as the payload QPC
-    // (Stopwatch.GetTimestamp == QueryPerformanceCounter). Refreshed on every exit, skips included.
+    // (Stopwatch.GetTimestamp == QueryPerformanceCounter). Seeded from the caller's baseline (the
+    // daemon passes its own start time, since it constructs this lazily on the first activation)
+    // and refreshed on every exit, skips included.
     private long _lastHandlerExit;
 
     public ActivationHandler(
@@ -899,7 +1020,8 @@ internal sealed class ActivationHandler
         Action dispatchHealer,
         Func<long>? timestamp = null,
         Func<long>? tickCount = null,
-        Func<SharedState, bool>? restorePending = null)
+        Func<SharedState, bool>? restorePending = null,
+        long? initialHandlerExit = null)
     {
         _sharedState = sharedState;
         _logger = logger;
@@ -909,8 +1031,8 @@ internal sealed class ActivationHandler
         _dispatchHealer = dispatchHealer;
         _timestamp = timestamp ?? Stopwatch.GetTimestamp;
         _tickCount = tickCount ?? (() => Environment.TickCount64);
-        _restorePending = restorePending ?? TimeoutRepair.TryRestorePending;
-        _lastHandlerExit = _timestamp();
+        _restorePending = restorePending ?? (state => TimeoutRepair.TryRestorePending(state));
+        _lastHandlerExit = initialHandlerExit ?? _timestamp();
     }
 
     public void HandleActivation()
@@ -940,6 +1062,11 @@ internal sealed class ActivationHandler
 
     private void RunThrottledActivation()
     {
+        // Created, acquired, released, and disposed within this one activation, never cached in
+        // a field: a live cached handle would make CrashRepair's createdNew liveness check read
+        // false on every watchdog tick and silently disable the crash-repair watchdog. The
+        // create-unowned-then-WaitOne(0) pair is a genuine acquire, satisfying the
+        // acquired-not-probed invariant CrashRepair documents.
         using var guardMutex = new Mutex(initiallyOwned: false, _guardMutexName);
         var acquired = false;
 
@@ -1015,15 +1142,17 @@ internal sealed class ActivationHandler
 ```
 Note the healer-dispatch ordering divergence from the app: the app releases its guard mutex before lingering because the healer runs inline there; the daemon's healer runs on a background task, so dispatching inside the mutex scope is equivalent (the dispatch itself is instantaneous) and keeps the method simple. The heal itself never needs the guard mutex. If the spec's revise-plan pass disagrees, move `_dispatchHealer()` after the `finally`; behavior is identical either way because dispatch does not block.
 
+Spec anti-goal, restated at the point of temptation: the consumed button code feeds logging only. No logic branches on it; in particular the healer dispatch decision keys on `performedAttach` alone, and `TriggerButtonHealer` continues to monitor both trigger buttons regardless of which button signaled.
+
 - [ ] **Step 4: Run to verify pass**
 
-Run: `dotnet build C:/Git/TheCloser --no-incremental; dotnet test C:/Git/TheCloser/TheCloser.Tests --no-build --filter "FullyQualifiedName~ActivationHandlerTests"`
-Expected: PASS, all 11 cases.
+Run: `dotnet build C:/Git/TheCloser --no-incremental && dotnet test C:/Git/TheCloser/TheCloser.Tests --no-build --filter "FullyQualifiedName~ActivationHandlerTests"`
+Expected: PASS, all 12 cases.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git -C C:/Git/TheCloser add -A && git -C C:/Git/TheCloser commit -m "feat(shared): activation handler for the daemon IPC path"
+git -C C:/Git/TheCloser add -A -- ':!.claude/plans' && git -C C:/Git/TheCloser commit -m "feat(shared): activation handler for the daemon IPC path"
 ```
 
 ---
@@ -1032,10 +1161,11 @@ git -C C:/Git/TheCloser add -A && git -C C:/Git/TheCloser commit -m "feat(shared
 
 **Files:**
 - Create: `TheCloser.Shared/DaemonRuntime.cs`
+- Modify: `TheCloser.Tests/TestNames.cs` (adds `UniqueEventName()`)
 - Test: `TheCloser.Tests/DaemonRuntimeTests.cs` (new)
 
 **Interfaces:**
-- Consumes: `CrashRepair.TryRepairCrashedState(SharedState, string, Logger)` (read its exact signature in `TheCloser.Shared/CrashRepair.cs` first), `ActivationHandler` shape from Task 5 (wired by the caller as a delegate).
+- Consumes: pre-existing `SharedState` and `Logger` shapes only. The `ActivationHandler` from Task 5 and `CrashRepair.TryRepairCrashedState` reach the runtime solely as the caller-wired `onActivation` / `watchdogTick` delegates; that wiring is the composition-root task's consumption, not this task's.
 - Produces:
 ```csharp
 internal sealed class DaemonRuntime
@@ -1054,11 +1184,18 @@ internal sealed class DaemonRuntime
     public void DispatchHealer(Action heal);  // tracked background task, log-and-swallow
 }
 ```
+Also produced for later tasks: `TestNames.UniqueEventName()` in `TheCloser.Tests/TestNames.cs`, added by Step 1.
 Behavior contract: Run pins the MMF, creates both auto-reset events, publishes the daemon mutex last, exits logging when `createdNew` is false; loops `WaitHandle.WaitAny([exitEvent, activationEvent], watchdogInterval)` where index 0 exits the loop, index 1 invokes `onActivation` under log-and-swallow, and timeout invokes `watchdogTick` under log-and-swallow; after the loop, one final `watchdogTick` under log-and-swallow, then a drain that snapshots the tracked healer tasks and waits for them, all before the using-scope unwind releases the kernel objects.
 
 - [ ] **Step 1: Write the failing tests**
 
-Create `TheCloser.Tests/DaemonRuntimeTests.cs`. Every wait is bounded (5 s) so a regression fails rather than hangs; every kernel object name is GUID-suffixed per test via the shipped `TestNames` helpers (reuse the exact member names found there).
+First add one member to `TheCloser.Tests/TestNames.cs`, after `UniqueLoggerName()`:
+
+```csharp
+    public static string UniqueEventName() => UniqueName();
+```
+
+Then create `TheCloser.Tests/DaemonRuntimeTests.cs`. Every wait is bounded (5 s) so a regression fails rather than hangs; every runtime thread is a background thread, so an assertion failure between start and join can never leave a foreground thread pinning the test process; every kernel object name is GUID-suffixed per test; log assertions use the `TempLogger` drain-then-read idiom (drain only after `Run` has returned).
 
 ```csharp
 using TheCloser.Shared;
@@ -1079,17 +1216,24 @@ public class DaemonRuntimeTests
         public string Exit { get; } = TestNames.UniqueEventName();
     }
 
-    private static DaemonRuntime Build(Names n, List<string> log, Action<SharedState>? onActivation = null, Action<SharedState>? watchdogTick = null) =>
-        new(TestLoggers.Capturing(log), n.Map, n.Mutex, n.Activation, n.Exit,
+    private static DaemonRuntime Build(Names n, TempLogger logger, Action<SharedState>? onActivation = null, Action<SharedState>? watchdogTick = null) =>
+        new(logger.Logger, n.Map, n.Mutex, n.Activation, n.Exit,
             onActivation ?? (_ => { }), watchdogTick ?? (_ => { }), LongInterval);
 
-    private static (Thread Thread, Names Names, List<string> Log) Start(DaemonRuntime runtime, Names n, List<string> log)
+    private static async Task<string> ReadLogAsync(TempLogger logger)
     {
-        var thread = new Thread(runtime.Run);
+        await logger.DrainAsync();
+
+        return File.ReadAllText(logger.LogPath);
+    }
+
+    private static Thread Start(DaemonRuntime runtime, Names n)
+    {
+        var thread = new Thread(runtime.Run) { IsBackground = true };
         thread.Start();
         Assert.True(SpinWaitFor(() => Mutex.TryOpenExisting(n.Mutex, out var m) && Dispose(m)), "daemon mutex never appeared");
 
-        return (thread, n, log);
+        return thread;
     }
 
     private static bool Dispose(Mutex m)
@@ -1122,22 +1266,22 @@ public class DaemonRuntimeTests
     }
 
     [Fact]
-    public void SecondInstance_LosesOnMutex_AndEventStaysSignalable()
+    public async Task SecondInstance_LosesOnMutex_AndEventStaysSignalable()
     {
         // Arrange
         var n = new Names();
-        var log = new List<string>();
-        var (thread, _, _) = Start(Build(n, log), n, log);
+        using var logger = new TempLogger();
+        var thread = Start(Build(n, logger), n);
 
         // Act: a second runtime with the same names must return promptly.
-        var secondLog = new List<string>();
-        var second = Build(n, secondLog);
-        var secondThread = new Thread(second.Run);
+        using var secondLogger = new TempLogger();
+        var second = Build(n, secondLogger);
+        var secondThread = new Thread(second.Run) { IsBackground = true };
         secondThread.Start();
         Assert.True(secondThread.Join(WaitBudget));
 
         // Assert: the loser logged and the survivor's activation event is still signalable.
-        Assert.Contains(secondLog, line => line.Contains("already running"));
+        Assert.Contains("already running", await ReadLogAsync(secondLogger));
         using (var evt = EventWaitHandle.OpenExisting(n.Activation))
         {
             evt.Set();
@@ -1150,11 +1294,11 @@ public class DaemonRuntimeTests
     {
         // Arrange
         var n = new Names();
-        var log = new List<string>();
-        var runtime = Build(n, log);
+        using var logger = new TempLogger();
+        var runtime = Build(n, logger);
 
         // Act
-        var thread = new Thread(runtime.Run);
+        var thread = new Thread(runtime.Run) { IsBackground = true };
         thread.Start();
         Assert.True(SpinWaitFor(() => Mutex.TryOpenExisting(n.Mutex, out var m) && Dispose(m)));
 
@@ -1165,18 +1309,18 @@ public class DaemonRuntimeTests
     }
 
     [Fact]
-    public void Activation_InvokesHandler_AndExceptionIsSwallowed()
+    public async Task Activation_InvokesHandler_AndExceptionIsSwallowed()
     {
         // Arrange
         var n = new Names();
-        var log = new List<string>();
+        using var logger = new TempLogger();
         var invocations = 0;
-        var runtime = Build(n, log, onActivation: _ =>
+        var runtime = Build(n, logger, onActivation: _ =>
         {
             invocations++;
             throw new InvalidOperationException("handler boom");
         });
-        var (thread, _, _) = Start(runtime, n, log);
+        var thread = Start(runtime, n);
 
         // Act: two signals; the loop must survive the first throw to observe the second.
         using (var evt = EventWaitHandle.OpenExisting(n.Activation))
@@ -1188,8 +1332,8 @@ public class DaemonRuntimeTests
         }
 
         // Assert
-        Assert.Contains(log, line => line.Contains("handler boom"));
         StopAndJoin(n, thread);
+        Assert.Contains("handler boom", await ReadLogAsync(logger));
     }
 
     [Fact]
@@ -1197,10 +1341,10 @@ public class DaemonRuntimeTests
     {
         // Arrange: interval far above the test duration, so the only tick is the final one.
         var n = new Names();
-        var log = new List<string>();
+        using var logger = new TempLogger();
         var ticks = 0;
-        var runtime = Build(n, log, watchdogTick: _ => ticks++);
-        var (thread, _, _) = Start(runtime, n, log);
+        var runtime = Build(n, logger, watchdogTick: _ => ticks++);
+        var thread = Start(runtime, n);
 
         // Act
         StopAndJoin(n, thread);
@@ -1210,14 +1354,14 @@ public class DaemonRuntimeTests
     }
 
     [Fact]
-    public void FinalRepairTick_ThrowIsSwallowed_DrainStillRuns()
+    public async Task FinalRepairTick_ThrowIsSwallowed_DrainStillRuns()
     {
         // Arrange
         var n = new Names();
-        var log = new List<string>();
+        using var logger = new TempLogger();
         var healRan = false;
-        var runtime = Build(n, log, watchdogTick: _ => throw new InvalidOperationException("tick boom"));
-        var (thread, _, _) = Start(runtime, n, log);
+        var runtime = Build(n, logger, watchdogTick: _ => throw new InvalidOperationException("tick boom"));
+        var thread = Start(runtime, n);
         runtime.DispatchHealer(() =>
         {
             Thread.Sleep(100);
@@ -1228,19 +1372,19 @@ public class DaemonRuntimeTests
         StopAndJoin(n, thread);
 
         // Assert: the throwing final tick was logged and did not skip the drain.
-        Assert.Contains(log, line => line.Contains("tick boom"));
         Assert.True(healRan);
+        Assert.Contains("tick boom", await ReadLogAsync(logger));
     }
 
     [Fact]
-    public void Drain_WaitsForDispatchedHeal_IncludingThrowingHeal()
+    public async Task Drain_WaitsForDispatchedHeal_IncludingThrowingHeal()
     {
         // Arrange
         var n = new Names();
-        var log = new List<string>();
+        using var logger = new TempLogger();
         var slowHealDone = false;
-        var runtime = Build(n, log);
-        var (thread, _, _) = Start(runtime, n, log);
+        var runtime = Build(n, logger);
+        var thread = Start(runtime, n);
         runtime.DispatchHealer(() =>
         {
             Thread.Sleep(100);
@@ -1253,11 +1397,11 @@ public class DaemonRuntimeTests
 
         // Assert
         Assert.True(slowHealDone);
-        Assert.Contains(log, line => line.Contains("heal boom"));
+        Assert.Contains("heal boom", await ReadLogAsync(logger));
     }
 }
 ```
-As in Task 5, `TestLoggers.Capturing` and the `TestNames.Unique*` members stand for the shipped helpers; read `TestNames.cs` and `TempLogger.cs` first and substitute the real names, adding a `UniqueEventName()` member to `TestNames` in this task if none exists (same GUID-suffix pattern as its siblings).
+The tests are complete as written; they use only shipped helpers plus the `UniqueEventName()` member this step adds.
 
 - [ ] **Step 2: Run to verify failure**
 
@@ -1340,17 +1484,22 @@ internal sealed class DaemonRuntime
 
     public void DispatchHealer(Action heal)
     {
-        Task? task = null;
-        task = Task.Run(() =>
+        // Register before running so the drain can never miss a just-dispatched heal, and remove
+        // by the registered completion so a fast heal cannot race its own registration.
+        var completion = new TaskCompletionSource();
+        _healerTasks.TryAdd(completion.Task, 0);
+        Task.Run(() =>
         {
-            RunIsolated(heal);
-
-            if (task is not null)
+            try
             {
-                _healerTasks.TryRemove(task, out _);
+                RunIsolated(heal);
+            }
+            finally
+            {
+                _healerTasks.TryRemove(completion.Task, out _);
+                completion.SetResult();
             }
         });
-        _healerTasks.TryAdd(task, 0);
     }
 
     private void RunLoop(SharedState sharedState, EventWaitHandle exitEvent, EventWaitHandle activationEvent)
@@ -1403,35 +1552,190 @@ internal sealed class DaemonRuntime
 
 - [ ] **Step 4: Run to verify pass**
 
-Run: `dotnet build C:/Git/TheCloser --no-incremental; dotnet test C:/Git/TheCloser/TheCloser.Tests --no-build --filter "FullyQualifiedName~DaemonRuntimeTests"`
+Run: `dotnet build C:/Git/TheCloser --no-incremental && dotnet test C:/Git/TheCloser/TheCloser.Tests --no-build --filter "FullyQualifiedName~DaemonRuntimeTests"`
 Expected: PASS, all 6 cases.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git -C C:/Git/TheCloser add -A && git -C C:/Git/TheCloser commit -m "feat(shared): daemon runtime loop with drain and final repair tick"
+git -C C:/Git/TheCloser add -A -- ':!.claude/plans' && git -C C:/Git/TheCloser commit -m "feat(shared): daemon runtime loop with drain and final repair tick"
 ```
 
 ---
 
-### Task 7: Wire the daemon and app composition roots
+### Task 7: Wire the daemon composition root
 
 **Files:**
+- Create: `TheCloser.Shared/DaemonConfiguration.cs`
 - Modify: `TheCloser.Daemon/Program.cs`
-- Modify: `TheCloser/Program.cs` (only if Task 2's constant edit left anything; otherwise untouched here)
+- Test: `TheCloser.Tests/DaemonConfigurationTests.cs` (new)
 
 **Interfaces:**
 - Consumes: everything from Tasks 2 through 6 with the exact signatures above.
+- Produces: `internal static class DaemonConfiguration { public static IConfigurationRoot Build(string directory, Action<string> logError); }` in `TheCloser.Shared`.
 
-- [ ] **Step 1: Rewrite TheCloser.Daemon/Program.cs**
+- [ ] **Step 1: Write the failing configuration tests**
 
-Replace the `Run()` method and supporting members with a composition root (keep `Main`, `SignalExit`, and the argument dispatch exactly as they are). The `onActivation` and `watchdogTick` delegates receive the `SharedState` that `DaemonRuntime.Run` created, so the handler is built lazily on the first activation. The exact final shape:
+Create `TheCloser.Tests/DaemonConfigurationTests.cs`:
+
+```csharp
+using Microsoft.Extensions.Configuration;
+using TheCloser.Shared;
+using Xunit;
+
+namespace TheCloser.Tests;
+
+public class DaemonConfigurationTests
+{
+    [Fact]
+    public void MissingFile_YieldsEmptyConfiguration()
+    {
+        // Arrange
+        var directory = CreateTempDirectory();
+        IConfigurationRoot? root = null;
+
+        try
+        {
+            // Act
+            root = DaemonConfiguration.Build(directory, _ => { });
+
+            // Assert
+            Assert.Empty(root.AsEnumerable());
+        }
+        finally
+        {
+            (root as IDisposable)?.Dispose();
+            DeleteQuietly(directory);
+        }
+    }
+
+    [Fact]
+    public void MalformedJson_LogsAndYieldsEmptyConfiguration()
+    {
+        // Arrange
+        var directory = CreateTempDirectory();
+        File.WriteAllText(Path.Combine(directory, "appsettings.json"), "{ not json");
+        var logged = new List<string>();
+        IConfigurationRoot? root = null;
+
+        try
+        {
+            // Act
+            root = DaemonConfiguration.Build(directory, logged.Add);
+
+            // Assert
+            Assert.Contains(logged, line => line.Contains("Configuration reload failed"));
+            Assert.Empty(root.AsEnumerable());
+        }
+        finally
+        {
+            (root as IDisposable)?.Dispose();
+            DeleteQuietly(directory);
+        }
+    }
+
+    [Fact]
+    public void ValidFile_ExposesValues()
+    {
+        // Arrange
+        var directory = CreateTempDirectory();
+        File.WriteAllText(Path.Combine(directory, "appsettings.json"), "{ \"chrome\": \"CTRL-F4\" }");
+        IConfigurationRoot? root = null;
+
+        try
+        {
+            // Act
+            root = DaemonConfiguration.Build(directory, _ => { });
+
+            // Assert
+            Assert.Equal("CTRL-F4", root["chrome"]);
+        }
+        finally
+        {
+            (root as IDisposable)?.Dispose();
+            DeleteQuietly(directory);
+        }
+    }
+
+    private static string CreateTempDirectory()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"TheCloserConfigTests-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+
+        return directory;
+    }
+
+    private static void DeleteQuietly(string directory)
+    {
+        try
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+        catch (IOException)
+        {
+            // The config file watcher can hold the directory handle briefly; the GUID-suffixed
+            // temp directory is left to OS temp cleanup instead of failing the test.
+        }
+    }
+}
+```
+
+- [ ] **Step 2: Run to verify failure**
+
+Run: `dotnet build C:/Git/TheCloser --no-incremental`
+Expected: build FAILS with CS0103 (the name 'DaemonConfiguration' does not exist) in DaemonConfigurationTests.cs; that compile failure is this step's red state.
+
+- [ ] **Step 3: Create the configuration builder**
+
+Create `TheCloser.Shared/DaemonConfiguration.cs`:
+
+```csharp
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Configuration.Json;
+
+namespace TheCloser.Shared;
+
+// The daemon's configuration root: optional appsettings.json beside the executable, hot-reloaded,
+// with parse failures logged and swallowed so a bad edit degrades to the last good snapshot
+// instead of killing the daemon (see the fix design's Configuration section).
+internal static class DaemonConfiguration
+{
+    public static IConfigurationRoot Build(string directory, Action<string> logError) => new ConfigurationBuilder()
+        .SetBasePath(directory)
+        .AddJsonFile(source =>
+        {
+            source.Path = "appsettings.json";
+            source.Optional = true;
+            source.ReloadOnChange = true;
+            // Parse failures only: the provider opens the file outside this handler's reach, so
+            // an open failure faults the framework's discarded watcher task instead (accepted;
+            // see the fix design's Configuration section).
+            source.OnLoadException = context =>
+            {
+                logError($"Configuration reload failed: {context.Exception.Message}");
+                context.Ignore = true;
+            };
+            source.ResolveFileProvider();
+        })
+        .Build();
+}
+```
+
+Verify the exact `AddJsonFile(Action<JsonConfigurationSource>)` overload and the `ResolveFileProvider()` requirement against the installed 10.0.9 package source or docs before writing; if the action overload does not honor `SetBasePath` even with `ResolveFileProvider()`, fall back to constructing the `JsonConfigurationSource` explicitly and calling `builder.Add(source)`. Drop the `using Microsoft.Extensions.Configuration.Json;` line if the compiler flags it unnecessary.
+
+Run: `dotnet build C:/Git/TheCloser --no-incremental && dotnet test C:/Git/TheCloser/TheCloser.Tests --no-build --filter "FullyQualifiedName~DaemonConfigurationTests"`
+Expected: Build succeeded; PASS, all 3 cases.
+
+- [ ] **Step 4: Rewrite TheCloser.Daemon/Program.cs**
+
+Replace the `Run()` method and supporting members with a composition root (keep `Main`, `SignalExit`, and the argument dispatch exactly as they are). The `onActivation` and `watchdogTick` delegates receive the `SharedState` that `DaemonRuntime.Run` created, so the handler is built lazily on the first activation. Because of that laziness the daemon's start QPC is captured here and passed as `initialHandlerExit`: the spec pins the deferred-marker baseline to the daemon's own start time, and seeding it at construction instead would mark every daemon lifetime's first press deferred, excluding exactly the after-idle presses the spec's latency gate samples. The exact final shape:
 
 ```csharp
     private static void Run()
     {
+        var daemonStart = Stopwatch.GetTimestamp();
         var exeDirectory = Path.GetDirectoryName(Environment.ProcessPath)!;
-        var liveRoot = BuildConfiguration(exeDirectory);
+        var liveRoot = DaemonConfiguration.Build(exeDirectory, Logger.Log);
         var lastGood = new LastGoodConfiguration();
         ActivationHandler? handler = null;
         DaemonRuntime? runtime = null;
@@ -1449,6 +1753,13 @@ Replace the `Run()` method and supporting members with a composition root (keep 
                     Logger,
                     GuardMutexName,
                     settings: () => lastGood.Refresh(liveRoot, Logger.Log),
+                    // The WindowCloser (and the ForegroundActivator it owns) is constructed
+                    // inside this lambda, never hoisted to a field: PerformedInputAttach is
+                    // OR-assigned and never reset, so it is sticky for a pipeline instance's
+                    // life. A daemon-lifetime instance would therefore report an attach on every
+                    // close forever after the first real one, dispatching the healer after every
+                    // close for the daemon's whole life. Per-activation construction is a spec
+                    // requirement, not an allocation the daemon can optimize away.
                     runClose: snapshot =>
                     {
                         var closer = new WindowCloser(snapshot, sharedState, Logger);
@@ -1456,7 +1767,8 @@ Replace the `Run()` method and supporting members with a composition root (keep 
 
                         return closer.PerformedInputAttach;
                     },
-                    dispatchHealer: () => runtime!.DispatchHealer(() => new TriggerButtonHealer(Logger).HealStuckButtons()));
+                    dispatchHealer: () => runtime!.DispatchHealer(() => new TriggerButtonHealer(Logger).HealStuckButtons()),
+                    initialHandlerExit: daemonStart);
                 handler.HandleActivation();
             },
             watchdogTick: RepairIfCrashed,
@@ -1470,25 +1782,6 @@ Replace the `Run()` method and supporting members with a composition root (keep 
         }
     }
 
-    private static IConfigurationRoot BuildConfiguration(string exeDirectory) => new ConfigurationBuilder()
-        .SetBasePath(exeDirectory)
-        .AddJsonFile(source =>
-        {
-            source.Path = "appsettings.json";
-            source.Optional = true;
-            source.ReloadOnChange = true;
-            // Parse failures only: the provider opens the file outside this handler's reach, so
-            // an open failure faults the framework's discarded watcher task instead (accepted;
-            // see the fix design's Configuration section).
-            source.OnLoadException = context =>
-            {
-                Logger.Log($"Configuration reload failed: {context.Exception.Message}");
-                context.Ignore = true;
-            };
-            source.ResolveFileProvider();
-        })
-        .Build();
-
     private static void RepairIfCrashed(SharedState sharedState)
     {
         if (CrashRepair.TryRepairCrashedState(sharedState, GuardMutexName, Logger))
@@ -1497,20 +1790,30 @@ Replace the `Run()` method and supporting members with a composition root (keep 
         }
     }
 ```
-Add `using Microsoft.Extensions.Configuration;` and `using Microsoft.Extensions.Configuration.Json;` as needed. Note the config-root disposal after `Run()` returns and before `Main`'s `finally` disposes the Logger, matching the spec's unwind ordering. Verify the exact `AddJsonFile(Action<JsonConfigurationSource>)` overload and the `ResolveFileProvider()` requirement against the installed 10.0.9 package source or docs before writing; if the action overload does not honor `SetBasePath` even with `ResolveFileProvider()`, fall back to constructing the `JsonConfigurationSource` explicitly and calling `builder.Add(source)`.
+Add `using System.Diagnostics;`, `using TheCloser.Shared;`, and `using Microsoft.Extensions.Configuration;` beside the existing usings as needed. Note the config-root disposal after `Run()` returns and before `Main`'s `finally` disposes the Logger, matching the spec's unwind ordering. The composition wiring itself (lazy handler construction, disposal ordering) is gated by compile plus the pipeline's end-to-end verification; its parts are unit-covered piecewise by Tasks 4 through 6 and the configuration tests above.
 
-- [ ] **Step 2: Build, run the touching test suites**
+- [ ] **Step 5: Verify the per-activation lifetimes structurally**
+
+Neither hoisting hazard has a unit test (both are about object lifetime in the composition root, not observable behavior of one call), so gate them by reading the two files.
+
+Run (Git Bash):
+```bash
+grep -n "new WindowCloser\|new TriggerButtonHealer\|new Mutex" /c/Git/TheCloser/TheCloser.Daemon/Program.cs /c/Git/TheCloser/TheCloser.Shared/ActivationHandler.cs
+```
+Expected: exactly three hits, each inside a lambda or method body and none at field scope. In `Program.cs`: one `new WindowCloser` inside the `runClose` lambda and one `new TriggerButtonHealer` inside the `dispatchHealer` lambda, and no `new Mutex` at all (the daemon mutex the pre-rewrite `Run()` created now lives in `DaemonRuntime`). In `ActivationHandler.cs`: one `new Mutex` inside `RunThrottledActivation`. A hit at field scope, or a surviving `new Mutex` in `Program.cs`, means a pipeline, healer, or guard-mutex handle was hoisted to daemon lifetime; revert that hoist before continuing.
+
+- [ ] **Step 6: Build, run the touching test suites**
 
 Run: `dotnet build C:/Git/TheCloser --no-incremental`
 Expected: Build succeeded.
 
-Run: `dotnet test C:/Git/TheCloser/TheCloser.Tests --no-build --filter "FullyQualifiedName~DaemonRuntimeTests|FullyQualifiedName~ActivationHandlerTests|FullyQualifiedName~CrashRepairTests|FullyQualifiedName~TimeoutRepairTests"`
+Run: `dotnet test C:/Git/TheCloser/TheCloser.Tests --no-build --filter "FullyQualifiedName~DaemonRuntimeTests|FullyQualifiedName~ActivationHandlerTests|FullyQualifiedName~DaemonConfigurationTests|FullyQualifiedName~CrashRepairTests|FullyQualifiedName~TimeoutRepairTests"`
 Expected: PASS.
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git -C C:/Git/TheCloser add -A && git -C C:/Git/TheCloser commit -m "feat(daemon): host the IPC activation pipeline"
+git -C C:/Git/TheCloser add -A -- ':!.claude/plans' && git -C C:/Git/TheCloser commit -m "feat(daemon): host the IPC activation pipeline"
 ```
 
 ---
@@ -1542,6 +1845,13 @@ global TriggerButtonXButton2 := 1
 ; 5000 ms (above the measured 0.7-2.5 s process-creation window and the ~2 s drain). Every
 ; branch ends with no handle held; a launch failure is silent (headless at logon) and leaves
 ; the degraded mode, which self-heals through per-press fallback.
+; ==== This replacement is also the whole answer to downward mixed elevation (an elevated
+; script signalling an unelevated daemon, which OpenEvent cannot distinguish and which would
+; silently fail to close elevated windows). Detecting that per press is an explicit spec
+; anti-goal: it arises only from manually starting a daemon in a deployed chain, and the
+; stop-then-start above replaces such a daemon at the next script start. Add no per-press
+; elevation probe. Upward (unelevated script, elevated daemon) needs nothing either: OpenEvent
+; fails with access denied and the press takes the fallback.
 Loop, 2 {
     RunWait, "%A_ScriptDir%\TheCloser.Daemon.exe" --stop, %A_ScriptDir%, UseErrorLevel
     if (ErrorLevel = "ERROR")
@@ -1592,6 +1902,10 @@ DllCall("QueryPerformanceCounter", "Int64*", LaunchQpc)
 hEvent := DllCall("OpenEvent", "UInt", 0x0002, "Int", 0, "Str", ActivationEventName, "Ptr")
 if (!hEvent) {
     ; Fallback: today's slow-but-working path; also starts a daemon for the next press.
+    ; No UseErrorLevel here, deliberately: the auto-execute suppresses its launch-error dialog
+    ; because a modal at logon would block a headless sequence, and the spec states that
+    ; rationale does not transfer to a press an interactive user is present for. Keeping today's
+    ; modal surface means the fallback's failure exposure is never worse than shipped.
     Run, "%A_ScriptDir%\TheCloser.exe" --probe-launch-qpc %LaunchQpc%, %A_ScriptDir%
     Return
 }
@@ -1602,6 +1916,10 @@ hMap := DllCall("OpenFileMapping", "UInt", 0x0002, "Int", 0, "Str", SharedStateN
 if (hMap) {
     pView := DllCall("MapViewOfFile", "Ptr", hMap, "UInt", 0x0002, "UInt", 0, "UInt", 0, "UPtr", 0, "Ptr")
     if (pView) {
+        ; The payload carries a timestamp and a button code and nothing else. Press-time cursor
+        ; position transmission is an explicit spec non-goal: the daemon samples the cursor when
+        ; it handles the press, which is the user's latest intent, where a press-time position
+        ; would aim a deferred close at a spot the user has already left.
         NumPut(LaunchQpc, pView + ActivationQpcOffset, 0, "Int64")
         NumPut(TriggerButtonXButton2, pView + ActivationButtonOffset, 0, "Int")
         DllCall("UnmapViewOfFile", "Ptr", pView)
@@ -1617,7 +1935,34 @@ Return
 Run (Git Bash): `rg --crlf -n "[^ -~\t]" /c/Git/TheCloser/TheCloser.ahk`
 Expected: no output (exit 1 is the zero-match success signal).
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 3: Syntax gate**
+
+AutoHotkey v1 does have a headless syntax check: `/iLib NUL` loads and parses the script for library auto-inclusion and exits without executing it, and `/ErrorStdOut` sends any parse error to stderr instead of a modal dialog. This was probed while writing the plan against this very script: as prescribed above it exits 0 silently, while a dropped closing brace exits 2 with `(52) : ==> Functions cannot contain functions.` and an unrecognized command exits 2 with `==> This line does not contain a recognized action.`
+
+Two constraints on how it is invoked, both established by that probe:
+
+- Run it from **PowerShell, never Git Bash**. MSYS path conversion rewrites the `/iLib` and `/ErrorStdOut` switches into `C:/Program Files/Git/iLib` and `.../ErrorStdOut`, so AutoHotkey sees no switches, **runs** the script instead of parsing it, and the gate hangs with a resident AutoHotkey process.
+- `AutoHotkeyU64.exe` is a GUI-subsystem binary, so `&` does not wait for it and leaves `$LASTEXITCODE` unset. Use `Start-Process -Wait -PassThru` and read `.ExitCode`.
+
+Run:
+```powershell
+$p = Start-Process -FilePath 'C:\Program Files\AutoHotkey\AutoHotkeyU64.exe' -ArgumentList '/iLib', 'NUL', '/ErrorStdOut', 'C:/Git/TheCloser/TheCloser.ahk' -Wait -PassThru -WindowStyle Hidden -RedirectStandardError 'C:/Git/TheCloser/.tmp/ahk-parse.err'; "EXIT=$($p.ExitCode)"; Get-Content 'C:/Git/TheCloser/.tmp/ahk-parse.err' -Raw
+```
+Expected: `EXIT=0` and an empty error file. A nonzero exit prints the offending line number and message; fix the script before committing.
+
+The gate parses, so it catches malformed control flow, unbalanced braces, unrecognized commands, and bad hotkey labels. It does not evaluate `DllCall` type strings: a bogus type such as `"NotAType*"` still exits 0, because that failure is a runtime one. The token gate below therefore stays, covering the load-bearing API names the parser cannot vouch for, and real behavior is exercised by the handover's e2e pass.
+
+- [ ] **Step 4: Structural token gate**
+
+The parse gate cannot tell whether the rewrite kept the elements the design depends on, so check their presence literally:
+
+Run (Git Bash):
+```bash
+for token in "#SingleInstance Force" "XButton2::" "OpenMutex" "OpenEvent" "OpenFileMapping" "MapViewOfFile" "SetEvent" "QueryPerformanceCounter" "RunWait" "--probe-launch-qpc"; do grep -qF -e "$token" /c/Git/TheCloser/TheCloser.ahk || echo "MISSING $token"; done
+```
+Expected: no output. (The `-e` is load-bearing: `--probe-launch-qpc` passed as the first non-option word is parsed as an unknown long option, and grep exits 2 before searching, which the `||` branch would report as a false MISSING line.) Any `MISSING` line means the rewrite dropped a load-bearing element; fix before committing.
+
+- [ ] **Step 5: Commit**
 
 ```bash
 git -C C:/Git/TheCloser add TheCloser.ahk && git -C C:/Git/TheCloser commit -m "feat(ahk): IPC trigger with daemon stop-start auto-execute"
@@ -1683,12 +2028,35 @@ if (-not (Wait-TaskState -Name $TaskName -Running $true -TimeoutSeconds 5)) {
 }
 Write-Output "Started task '$TaskName'."
 ```
-Update the header comment: remove the sentence about `-StartNow`, state that the script now always registers, stops, sweeps, starts, and fails with a nonzero exit on a failed poll.
+Update the header comment (the block at lines 3-10, above the `[CmdletBinding()]` line; it contains no `-StartNow` sentence, so nothing is removed from it). Replace only the block's line-8 sentence, `# Run once per machine from an elevated shell; remove any old unelevated autostart by hand.` (the two lines after it, documenting the `$AhkScriptPath` default, stay exactly as they are), with:
+
+```powershell
+# Run from an elevated shell, or let deploy.ps1 run it on a machine with no task registered yet.
+# Every run registers, stops the running instance, sweeps stray AutoHotkey copies of the script,
+# starts the task, and exits nonzero if either state poll expires; remove any old unelevated
+# autostart by hand.
+```
+
+The `-StartNow` removal is a param-block edit, already covered by "keep the param block (minus `-StartNow`)" above; starting is now unconditional.
 
 - [ ] **Step 2: Syntax check**
 
-Run: `pwsh -NoProfile -Command "[void][System.Management.Automation.Language.Parser]::ParseFile('C:/Git/TheCloser/install-elevated-ahk.ps1', [ref]$null, [ref]$err); $err ? ($err | ForEach-Object Message) : 'parse-ok'"`
-Expected: `parse-ok`.
+An inline `-Command` string cannot carry this check: the calling shell expands `$t`/`$e`/`$null` inside double quotes before the child pwsh sees them. Write the check to a script file instead (the Write tool; overwriting an identical existing copy is fine) at `C:/Git/TheCloser/.tmp/parse-check.ps1` with exactly:
+
+```powershell
+param([Parameter(Mandatory)][string] $Path)
+$tokens = $null
+$errors = $null
+[void][System.Management.Automation.Language.Parser]::ParseFile($Path, [ref]$tokens, [ref]$errors)
+if ($errors.Count) {
+    $errors | ForEach-Object Message
+    exit 1
+}
+'parse-ok'
+```
+
+Run: `pwsh -NoProfile -File C:/Git/TheCloser/.tmp/parse-check.ps1 C:/Git/TheCloser/install-elevated-ahk.ps1`
+Expected: `parse-ok` and exit code 0; any parse error prints its messages and exits 1.
 
 - [ ] **Step 3: Commit**
 
@@ -1713,7 +2081,9 @@ After the final `Copy-Item ... 'install-elevated-ahk.ps1' ...` line in `deploy.p
 # the just-copied daemon) take over without a manual step. Task-state polls sidestep process
 # inspection: an unelevated shell cannot read an elevated process's command line. A discarded
 # start is excluded structurally: IgnoreNew only discards while an instance runs, and the
-# stop-poll proves none does before the start is issued.
+# stop-poll proves none does before the start is issued. Unlike the installer, this branch
+# deliberately runs no stray-instance sweep: on a machine already running the deployed chain the
+# only instance to manage is the task-hosted one the stop-poll just ended.
 $TaskName = 'TheCloser AutoHotkey (elevated)'
 
 function Wait-TaskState {
@@ -1747,7 +2117,9 @@ if ($Task) {
 else {
     # First deploy on this machine: register through the deployed installer copy so the task
     # binds to the deploy target's script, not this working tree. One UAC prompt, once per machine.
-    Start-Process pwsh -Verb RunAs -Wait -ArgumentList '-NoProfile', '-File', (Join-Path $Destination 'install-elevated-ahk.ps1')
+    # ArgumentList entries are joined with spaces and never quoted, and the configured
+    # Destination contains a space, so the -File path is quoted explicitly.
+    Start-Process pwsh -Verb RunAs -Wait -ArgumentList '-NoProfile', '-File', ('"{0}"' -f (Join-Path $Destination 'install-elevated-ahk.ps1'))
     $Task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
     if (-not $Task -or -not (Wait-TaskState -Name $TaskName -Running $true -TimeoutSeconds 5)) {
         [Console]::Error.WriteLine("First-deploy install did not leave task '$TaskName' running. Nothing verified.")
@@ -1760,8 +2132,22 @@ Note the stop-side elevation live-claim: if `Stop-ScheduledTask` fails with acce
 
 - [ ] **Step 2: Syntax check**
 
-Run: `pwsh -NoProfile -Command "[void][System.Management.Automation.Language.Parser]::ParseFile('C:/Git/TheCloser/deploy.ps1', [ref]$null, [ref]$err); $err ? ($err | ForEach-Object Message) : 'parse-ok'"`
-Expected: `parse-ok`.
+An inline `-Command` string cannot carry this check: the calling shell expands `$t`/`$e`/`$null` inside double quotes before the child pwsh sees them. Write the check to a script file instead (the Write tool; overwriting an identical existing copy is fine) at `C:/Git/TheCloser/.tmp/parse-check.ps1` with exactly:
+
+```powershell
+param([Parameter(Mandatory)][string] $Path)
+$tokens = $null
+$errors = $null
+[void][System.Management.Automation.Language.Parser]::ParseFile($Path, [ref]$tokens, [ref]$errors)
+if ($errors.Count) {
+    $errors | ForEach-Object Message
+    exit 1
+}
+'parse-ok'
+```
+
+Run: `pwsh -NoProfile -File C:/Git/TheCloser/.tmp/parse-check.ps1 C:/Git/TheCloser/deploy.ps1`
+Expected: `parse-ok` and exit code 0; any parse error prints its messages and exits 1.
 
 - [ ] **Step 3: Commit**
 
@@ -1776,7 +2162,7 @@ git -C C:/Git/TheCloser add deploy.ps1 && git -C C:/Git/TheCloser commit -m "fea
 - [ ] **Step 1: Build clean and run the whole test project**
 
 Run: `dotnet build C:/Git/TheCloser --no-incremental`
-Expected: Build succeeded, no new warnings versus the pre-task-1 baseline.
+Expected: Build succeeded, `0 Warning(s)` (the pre-plan tree builds with zero warnings, verified while writing the plan, so zero is the literal bar).
 
 Run: `dotnet test C:/Git/TheCloser/TheCloser.Tests --no-build`
 (The test project IS the filter; this is not the forbidden solution-wide unfiltered run.)
@@ -1786,9 +2172,15 @@ Expected: all tests pass.
 
 Run (Git Bash):
 ```bash
-grep -n "TheCloserDaemonMutex\|TheCloserActivationEvent\|TheCloserSharedState\|ActivationQpcOffset\|ActivationButtonOffset" /c/Git/TheCloser/TheCloser.ahk /c/Git/TheCloser/TheCloser.Shared/Constants.cs /c/Git/TheCloser/TheCloser.Shared/SharedState.cs
+grep -n "TheCloserDaemonMutex\|TheCloserActivationEvent\|TheCloserSharedState\|ActivationQpcOffset\|ActivationButtonOffset\|TriggerButtonXButton2" /c/Git/TheCloser/TheCloser.ahk /c/Git/TheCloser/TheCloser.Shared/Constants.cs /c/Git/TheCloser/TheCloser.Shared/SharedState.cs
 ```
-Expected: names and offset values 16/24 agree across all three files, each site carrying its keep-in-sync comment.
+Expected: names and offset values 16/24 agree across all three files (this grep prints only the value-carrying lines; it cannot see comments).
+
+Run (Git Bash):
+```bash
+grep -c "keep in sync\|Hand-synchronized" /c/Git/TheCloser/TheCloser.ahk /c/Git/TheCloser/TheCloser.Shared/Constants.cs /c/Git/TheCloser/TheCloser.Shared/SharedState.cs
+```
+Expected: a nonzero per-file count printed for each of the three files; judge by the printed numbers, never by grep's exit status.
 
 - [ ] **Step 3: Commit any stragglers**
 
@@ -1802,3 +2194,6 @@ Expected: clean apart from the plan file and `.tmp/`; commit nothing here if cle
 ## Post-implementation (owned by the handover pipeline, not this plan)
 
 Code review (`/nightshift:revise-code`), end-to-end verification per the spec's Testing and Verification criteria sections (deploy first; elevated e2e drive; latency gate including after-idle samples; live-claim probes), docs pass (CLAUDE.md architecture and centralization note), backlog bookkeeping, and the morning report.
+## Hardening
+
+- revise-plan graduated 2026-08-29 20:35 at d5bd1f2, scope: whole file, content: p-df3e0414a432
