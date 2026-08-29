@@ -6,7 +6,7 @@ Fixed and deployed on 2026-08-29. Normal activation now signals the long-lived d
 
 An exact contextual Defender exclusion remains a useful partial mitigation for the standalone fallback, but it would have removed only 655.392 ms of the second occurrence. It cannot make process launch reliable by itself. The earlier report of an approximately 10 second launch was not captured and may have been an extreme instance of the pre-image process-creation mode or another mode.
 
-The daemon IPC fix was implemented, reviewed, deployed, and functionally verified on 2026-08-29. After one pre-instrumentation 215.5 ms activation reset the gate, ten consecutive activations passed at 0.0 to 1.7 ms with no deferred marker. Three were first presses after 33m11s, 36m54s, and 31m24s idle. Temporary AHK boundary instrumentation then retired in `4cecfad`; the WPR task, trace monitor, and old fallback `InvocationProbe` also retired. The retained ETLs remain machine-local evidence.
+The daemon IPC fix was implemented, reviewed, deployed, and functionally verified on 2026-08-29. After one pre-instrumentation 215.5 ms activation reset the gate, ten consecutive activations passed at 0.0 to 1.7 ms with no deferred marker. Three were first presses after 33m11s, 36m54s, and 31m24s idle. Temporary AHK boundary instrumentation then retired after the IPC gate passed; the WPR task, trace monitor, and old fallback `InvocationProbe` also retired. The retained ETLs remain machine-local evidence.
 
 ## Symptom
 
@@ -21,7 +21,7 @@ The daemon IPC fix was implemented, reviewed, deployed, and functionally verifie
 
 The invocation probe receives a `QueryPerformanceCounter` value immediately before AutoHotkey calls `Run`, then records the first timestamp inside managed `Main`. Slow samples spend nearly all extra time between those boundaries. Once `Main` begins, daemon discovery, configuration, and window closing remain near their normal durations.
 
-The daemon was alive in the captured slow samples. Moving logger file writes to a queue in `f668ff4` removed synchronous file logging from the invocation path, but slow launches still occurred.
+The daemon was alive in the captured slow samples. Moving logger file writes to a queue removed synchronous file logging from the invocation path, but slow launches still occurred.
 
 ### 2026-08-27 asymmetric sample
 
@@ -274,9 +274,9 @@ Code signing, Defender exclusions, and further launch-time optimization of the f
 
 ## Diagnostic code and artifacts
 
-- `7a791b5`: startup checkpoint probe and `%TEMP%\TheCloser.Probe.log`; retired in `4cecfad` after the IPC gate passed.
-- `f668ff4`: asynchronous queued logger writes.
-- `451825d` and `9556455`: temporary paired-launch comparison; `41f7dd4` retired it after one near-concurrent activation showed both locations were slow.
+- The startup checkpoint probe and `%TEMP%\TheCloser.Probe.log` were retired after the IPC gate passed.
+- Asynchronous queued logger writes were retained as the investigation's production optimization.
+- The temporary paired-launch comparison was retired after one near-concurrent activation showed both locations were slow.
 - `.tmp/Minifilter.wprp`: lean 128 MB memory trace profile.
 - `.tmp/start-launch-trace-elevated.ps1`: elevated WPR start, log monitor, and automatic stop.
 - `.tmp/manage-launch-trace-task.ps1`: temporary task install, logon arm, and cleanup entry point; its remove action retired the task and monitor on 2026-08-29.
@@ -298,6 +298,6 @@ pwsh -NoProfile -File .tmp/manage-launch-trace-task.ps1 -Action Remove
 The command stopped and unregistered `TheCloser Launch Trace (Temporary)`, stopped the recognized trace monitor, and canceled WPR. Verification found no task or monitor, and `wpr -status` reported that WPR was not recording. The cleanup did not delete ETLs or this historical report.
 ## Hardening
 
-- revise-spec graduated 2026-08-29 08:15 at 250d591, scope: sections ## Fix design: daemon IPC activation, content: 5dd13c13
-- revise-spec refreshed 2026-08-29 23:01 at 4cecfad, scope: sections ## Fix design: daemon IPC activation, content: f30528f4 (live verification fold-back and implementation reconciliation)
-- handover completed 2026-08-29 23:43 at 2a78f91, scope: sections ## Fix design: daemon IPC activation, content: f30528f4
+- revise-spec graduated 2026-08-29 08:15 at 9622ca6, scope: sections ## Fix design: daemon IPC activation, content: 5dd13c13
+- revise-spec refreshed 2026-08-29 23:01 at fbd1c07, scope: sections ## Fix design: daemon IPC activation, content: f30528f4 (live verification fold-back and implementation reconciliation)
+- handover completed 2026-08-29 23:43 at 8cb972c, scope: sections ## Fix design: daemon IPC activation, content: f30528f4

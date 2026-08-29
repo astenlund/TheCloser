@@ -22,7 +22,7 @@ archaeological.
 
 ### Intermittent slow invocation after idle
 
-Reported: 2026-08-27. Fixed: 2026-08-29 in the daemon IPC implementation series from f158204 through the diagnostic cleanup in 4cecfad.
+Reported: 2026-08-27. Fixed: 2026-08-29 by the daemon IPC implementation series and verified after all temporary diagnostics were removed.
 
 **Symptom:** the first invocation after an idle interval sometimes spent hundreds of milliseconds or several seconds before managed `Main`; warm invocations were usually fast.
 
