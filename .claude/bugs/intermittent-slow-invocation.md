@@ -301,3 +301,4 @@ The command stopped and unregistered `TheCloser Launch Trace (Temporary)`, stopp
 - revise-spec graduated 2026-08-29 08:15 at 9622ca6, scope: sections ## Fix design: daemon IPC activation, content: 5dd13c13
 - revise-spec refreshed 2026-08-29 23:01 at fbd1c07, scope: sections ## Fix design: daemon IPC activation, content: f30528f4 (live verification fold-back and implementation reconciliation)
 - handover completed 2026-08-29 23:43 at 8cb972c, scope: sections ## Fix design: daemon IPC activation, content: f30528f4
+- revise-spec refreshed 2026-08-30 00:04 at 4d9e711, scope: sections ## Fix design: daemon IPC activation, content: 88a551e5 (transient diagnostic references removed during history cleanup)
