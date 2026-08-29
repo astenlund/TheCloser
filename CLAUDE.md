@@ -15,6 +15,8 @@ pwsh ./deploy.ps1
 
 The deploy script stops the daemon, builds in Release mode, and copies the executables and invocation-layer files (`TheCloser.ahk`, `install-elevated-ahk.ps1`) to the deploy target configured in `deploy.settings.psd1` (git-ignored, machine-local; see `deploy.settings.example.psd1`).
 
+If Native AOT reports cross-OS compilation from a Codex Windows shell even though the host and target RID are `win-x64`, the filtered shell omitted `OS`; run the deploy with `$env:OS = 'Windows_NT'` for that process.
+
 ### Running the Application
 ```bash
 # Run the main application (closes window under cursor)
@@ -36,30 +38,36 @@ dotnet test TheCloser.Tests --no-build
 
 ## Architecture
 
-TheCloser is a Windows utility that closes windows/tabs under the mouse cursor. It consists of three projects plus a test project. All kernel object names (mutexes, event, memory-mapped file) are session-local (no `Global\` prefix) and centralized in `TheCloser.Shared/Constants.cs`.
+TheCloser is a Windows utility that closes windows/tabs under the mouse cursor. It consists of three projects plus a test project. All kernel object names are session-local (no `Global\` prefix) and centralized in `TheCloser.Shared/Constants.cs`; `TheCloser.ahk` carries the one deliberate hand-synchronized copy because AutoHotkey cannot consume the C# constants.
 
-### TheCloser (Main Application)
-- Entry point that executes window closing operations
+### TheCloser (Standalone Fallback Application)
+- Fully functional fallback entry point used when AutoHotkey cannot open the daemon activation event
 - Uses mutex `TheCloserGuardMutex` to ensure single instance; holds it for the whole run
 - Implements 200ms throttling via a monotonic tick count in the shared memory-mapped file
 - On startup, restores a pending foreground-lock-timeout repair record before doing anything else
 - Automatically starts daemon if not running, then waits (50ms x 20 attempts) for the daemon to pin the memory-mapped file
-- Key files: `Program.cs`, `WindowCloser.cs` (kill-method resolution and dispatch), `ForegroundActivator.cs` (activation ladder), `ProcessSettingsParser.cs`, `NativeMethods.cs`
+- Key file: `Program.cs`; the close pipeline lives in `TheCloser.Shared`
 
 ### TheCloser.Daemon (Background Service)
-- Runs continuously in background, pinning the memory-mapped file `TheCloserSharedState` (named MMFs vanish when the last handle closes)
-- Uses mutex `TheCloserDaemonMutex` for single instance; exit is signaled via event `TheCloserDaemonExitEvent`
-- Watchdog: every 5s, if a foreground-lock-timeout repair record is pending and `TheCloserGuardMutex` can be acquired (the app died mid-operation), restores the saved timeout while holding the mutex; each iteration is exception-isolated so transient failures never kill the daemon
+- Runs continuously in background, pins `TheCloserSharedState`, and hosts the normal close pipeline in-process
+- Waits on `TheCloserActivationEvent` and `TheCloserDaemonExitEvent` under single-instance mutex `TheCloserDaemonMutex`; it publishes both events before the mutex so an observable daemon is ready for activation and stop signals
+- On activation, consumes the press payload, logs press-to-handler latency, applies the shared 200ms throttle and guard mutex, snapshots the current configuration, closes the window under the cursor, and dispatches the stuck-button healer when required
+- Hot-reloads `appsettings.json`; malformed, exclusively locked, or delete-and-replace transitions keep dispatching through the last good value snapshot
+- Every 5s, if a foreground-lock-timeout repair record is pending and `TheCloserGuardMutex` can be acquired, restores the saved timeout while holding the mutex; activation and watchdog exceptions are isolated
+- Graceful shutdown runs a final repair tick and drains healer tasks before releasing its kernel objects and disposing configuration and logging
 
 ### TheCloser.Shared (Common Library)
 - `Constants.cs`: kernel object names and IPC constants
-- `SharedState.cs`: memory-mapped file accessor (throttle tick at offset 0; repair flag at offset 8; saved timeout at offset 12). Write discipline: the saved value is committed before the flag, the reader checks the flag before the value, and clearing touches only the flag
+- `SharedState.cs`: memory-mapped file accessor (throttle tick at offset 0; repair flag at offset 8; saved timeout at offset 12; activation QPC at offset 16; trigger button at offset 24). Repair writes commit the saved value before the flag; activation writes commit the payload before signaling the event. Both activation fields are consumed and zeroed together
+- `DaemonRuntime.cs` / `ActivationHandler.cs`: daemon lifetime and per-activation orchestration, including startup publication order, watchdog and activation dispatch, final repair, healer drain, latency attribution, throttle, guard mutex, and exception isolation
+- `DaemonConfiguration.cs` / `LastGoodConfiguration.cs`: watched configuration root and per-activation value snapshot retained across transient reload failures
+- `WindowCloser.cs` / `ForegroundActivator.cs` / `TriggerButtonHealer.cs`: close dispatch, foreground activation ladder, and stuck-button recovery shared by the daemon and standalone fallback
 - `ForegroundLockTimeout.cs`: the SystemParametersInfo get/disable/restore wrapper
-- `TimeoutRepair.cs` / `CrashRepair.cs` / `ForegroundLockSuppression.cs`: the crash-repair protocol pieces (restore-then-clear with clear-only-on-success; the daemon's acquire-and-repair; the app's disable/restore scope around SetForegroundWindow), each unit-testable via injectable restore/tryGet/disable delegates
-- `Logger.cs`: writes to `%TEMP%\TheCloser*.log`; every non-empty line gets a UTC round-trip timestamp prefix (empty lines are unprefixed separators; clock injectable via optional constructor delegate); contention-tolerant, rotates to `.log.old` above 1 MB, never throws
+- `TimeoutRepair.cs` / `CrashRepair.cs` / `ForegroundLockSuppression.cs`: the crash-repair protocol pieces (restore-then-clear with clear-only-on-success; the daemon's acquire-and-repair; the close pipeline's disable/restore scope around SetForegroundWindow), each unit-testable via injectable restore/tryGet/disable delegates
+- `Logger.cs`: writes to `%TEMP%\TheCloser*.log`; every non-empty line gets a UTC round-trip timestamp prefix (empty lines are unprefixed separators; clock injectable via optional constructor delegate); contention-tolerant and never throws. Rotation to `.log.old` above 1 MB is checked only at logger construction; moving that check into the long-lived write path remains tracked in `.claude/QUICK_WINS.md`
 
 ### TheCloser.Tests
-- xUnit tests for `ProcessSettingsParser`, `SharedState` (including cross-handle visibility), `TimeoutRepair`, `CrashRepair`, `ForegroundLockSuppression`, `WindowCloser` kill-method resolution and dispatch, the `ForegroundActivator` escalation ladder (via the injected `INativeWindowApi` seam and suppression factory), and `Logger` rotation/append/timestamping
+- xUnit tests cover the shared-memory protocol, activation handler, daemon runtime, watched and last-good configuration, repair protocol, close dispatch, foreground activation ladder, stuck-button healer, fallback invocation probe, and logging
 - Kernel objects and log files use unique GUID-suffixed names per test (via the `TestNames` helper), so tests never collide with a live daemon or each other; the repair-protocol tests inject tryGet/disable/restore delegates, activator tests inject the suppression factory (constructing a real `ForegroundLockSuppression` mutates the system-wide foreground lock timeout), and no test ever touches the real SystemParametersInfo setting
 
 ## Window Closing Methods
@@ -72,8 +80,9 @@ Known bugs, quick wins, feature ideas, and design patterns are tracked in the `.
 
 ## Key Implementation Details
 
-1. **Foreground Window Handling**: Multiple strategies including SetForegroundWindow, AttachThreadInput, and clicking on title bar as fallback, implemented as the escalation ladder in `ForegroundActivator`. The system-wide foreground lock timeout is disabled around SetForegroundWindow and restored afterwards (the `ForegroundLockSuppression` scope); a repair record in the memory-mapped file plus the daemon watchdog and the app's startup repair heal the setting if the process is killed mid-operation. Because the app is invoked from a mouse button binding, AttachThreadInput's key-state resync can strand the button's in-flight release, leaving it stuck down system-wide; after any close that performed an attach, the app releases the guard mutex and lingers up to 2s monitoring the middle/X buttons (`TriggerButtonHealer`), injecting the missing release if one stays down past the deadline (see the stuck-XBUTTON2 entry in `.claude/BUGS_HISTORY.md` for the incident and the manual recovery command)
-2. **Accepted residual risk**: the timeout repair record only survives an app crash while a live daemon pins the memory-mapped file. If the daemon is dead (or on a first run where the 1s daemon wait timed out), a kill inside the sub-second disable window strands the foreground lock timeout at 0 until reboot. Gating the SPI manipulation on a confirmed daemon pin is an explicit anti-goal
+1. **Foreground Window Handling**: Multiple strategies including SetForegroundWindow, AttachThreadInput, and clicking on the title bar as fallback are implemented by `ForegroundActivator`. The system-wide foreground lock timeout is disabled around SetForegroundWindow and restored afterwards. The repair record plus the daemon watchdog, final repair tick, and fallback app startup repair heal interrupted operations. Because AttachThreadInput can strand the mouse button's in-flight release, any close that performed an attach releases the guard mutex before dispatching `TriggerButtonHealer`; the standalone app awaits it directly, while the daemon tracks it as a bounded task and drains it during shutdown. See the stuck-XBUTTON2 entry in `.claude/BUGS_HISTORY.md` for the incident and manual recovery command
+2. **Invocation IPC**: `TheCloser.ahk` opens and closes the activation event and shared-memory handles on every press. Never cache them: an AutoHotkey-held handle would pin a stale kernel object after daemon death and break fallback detection or daemon restart. The QPC and button-code constants in the script must stay synchronized with `Constants.cs` and `SharedState.cs`
+3. **Accepted residual risk**: if the process that owns the last shared-memory handle is killed during foreground-lock suppression, the repair record disappears and the timeout can remain 0 until reboot. This includes a fallback-app crash while no daemon pins the map and a daemon kill during an in-process close. Killing the daemon can also cut off the healer. Gating suppression on a confirmed daemon pin and adding a separate healer backstop are explicit anti-goals
 
 ## Backlogs and indexes
 

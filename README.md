@@ -4,7 +4,7 @@ This is a utility that, when executed, closes the window or tab currently under 
 
 ## How it works
 
-Invoking the executable closes the window or tab under the cursor and exits. A small background daemon (`TheCloser.Daemon.exe`, auto-started on first invocation) keeps shared state alive between invocations: a 200ms throttle that absorbs accidental double-triggers, and a crash-repair record that restores the system foreground lock timeout if the app is killed mid-operation. The daemon can be stopped with `TheCloser.Daemon.exe --stop`.
+The normal mouse-button path launches no executable per press. `TheCloser.ahk` writes the press timestamp to shared memory and signals `TheCloser.Daemon.exe`, which samples the cursor and runs the close pipeline in-process. The daemon owns the 200ms throttle, hot-reloads `appsettings.json`, and preserves the crash-repair record for the system foreground lock timeout. If the daemon event is unavailable, the script falls back to launching `TheCloser.exe`; that standalone path remains fully functional and starts the daemon for later presses. The daemon can be stopped with `TheCloser.Daemon.exe --stop`.
 
 ## Supported methods
 
@@ -20,13 +20,13 @@ Invoking the executable closes the window or tab under the cursor and exits. A s
 
 ## Invocation binding
 
-The app is designed to be bound to a mouse button. The reference binding is `TheCloser.ahk` (AutoHotkey v1), which launches the executable on Mouse5 (XButton2); `deploy.ps1` copies it next to the binaries.
+The app is designed to be bound to a mouse button. The reference binding is `TheCloser.ahk` (AutoHotkey v1), which signals the daemon on Mouse5 (XButton2) and uses the standalone executable only as a fallback; `deploy.ps1` copies it next to the binaries.
 
-AutoHotkey must run **elevated** for the binding to work while an elevated window (e.g. Task Manager) is active: UIPI silently drops low-level hook events for unelevated processes whenever the active window has higher integrity, so an unelevated AutoHotkey never sees the button press in that state. Elevation also propagates to TheCloser, which is what allows it to close elevated windows at all (message posting and input injection across the integrity boundary are otherwise blocked). Run `install-elevated-ahk.ps1` once per machine from an elevated shell to register a logon scheduled task that starts the script elevated, and remove any old unelevated autostart.
+AutoHotkey must run **elevated** for the binding to work while an elevated window (e.g. Task Manager) is active: UIPI silently drops low-level hook events for unelevated processes whenever the active window has higher integrity, so an unelevated AutoHotkey never sees the button press in that state. Elevation also propagates to the daemon and fallback app, which is what allows them to close elevated windows at all (message posting and input injection across the integrity boundary are otherwise blocked). `deploy.ps1` installs the `TheCloser AutoHotkey (elevated)` logon task on first deploy and restarts it after later deploys. `install-elevated-ahk.ps1` remains available for manual installation or repair; remove any old unelevated autostart.
 
 ## Configuration
 
-Applications can be configured with either a simple method string or an object with method and click position settings. The configuration is read from an appsettings.json file in the directory of the deployed executable and is maintained by hand there; the repository carries no appsettings.json.
+Applications can be configured with either a simple method string or an object with method and click position settings. The configuration is read from an appsettings.json file in the directory of the deployed executable and is maintained by hand there; the repository carries no appsettings.json. The daemon watches the file for changes and keeps the last good snapshot if a reload is malformed or temporarily unreadable.
 
 ### Example appsettings.json
 

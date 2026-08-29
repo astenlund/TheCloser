@@ -20,6 +20,18 @@ archaeological.
 
 ## Entries
 
+### Intermittent slow invocation after idle
+
+Reported: 2026-08-27. Fixed: 2026-08-29 in the daemon IPC implementation series from f158204 through the diagnostic cleanup in 4cecfad.
+
+**Symptom:** the first invocation after an idle interval sometimes spent hundreds of milliseconds or several seconds before managed `Main`; warm invocations were usually fast.
+
+**Root causes:** retained WPR traces proved two process-launch delay modes. One launch spent 702.310 ms in a synchronous Microsoft Defender scan before process creation. Another spent 1784.354 ms inside Windows process creation before the executable was opened, followed by a 655.392 ms Defender scan. Native AOT application work after process creation took only single-digit milliseconds.
+
+**Fix:** `TheCloser.ahk` now writes a QPC payload to shared memory and signals a long-lived daemon for the normal press path, so no executable launches per activation. The daemon hosts the close pipeline, hot-reloads last-good configuration, shares throttle and repair state with the standalone fallback, logs press-to-handler latency, drains stuck-button healers on shutdown, and keeps the fallback path available when its event is absent. Deployment and installer flows restart the elevated task with bounded state polls.
+
+**Verified:** deployed IPC closes passed background and foreground activation, configuration reload and last-good retention, same-path script replacement, missing-binary degraded mode, outside-copy installer cleanup, held-mutex retry expiry, and fallback self-healing. After one pre-instrumentation 215.5 ms activation reset the gate, ten consecutive real Mouse5 activations passed at 0.0 to 1.7 ms with no deferred marker; three were first presses after more than 30 minutes idle. The temporary WPR task, monitor, fallback `InvocationProbe`, and AHK boundary probe were then retired. The full evidence remains in [the historical investigation report](bugs/intermittent-slow-invocation.md).
+
 ### Test hygiene: stray GUID-named log files in %TEMP%
 
 Reported: 2026-07-10. Fixed: 2026-07-12 (test-only sweep across the commits titled "test: add TempLogger and stop leaking log files in %TEMP%" through "test(parser): pin numeric position, precedence, null warn sink").
