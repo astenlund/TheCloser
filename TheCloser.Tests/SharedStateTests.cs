@@ -115,4 +115,36 @@ public class SharedStateTests
         // Assert
         Assert.Equal(long.MaxValue, state.ReadThrottleTick());
     }
+
+    [Fact]
+    public void ActivationPayload_RoundTripsThenZeroesOnConsume()
+    {
+        // Arrange
+        using var state = new SharedState(TestNames.UniqueMapName());
+        state.WriteActivationPayload(123456789L, Constants.TriggerButtonXButton2);
+
+        // Act
+        var first = state.ConsumeActivationPayload();
+        var second = state.ConsumeActivationPayload();
+
+        // Assert
+        Assert.Equal(123456789L, first.LaunchQpc);
+        Assert.Equal(Constants.TriggerButtonXButton2, first.ButtonCode);
+        Assert.Equal(0L, second.LaunchQpc);
+        Assert.Equal(Constants.TriggerButtonUnknown, second.ButtonCode);
+    }
+
+    [Fact]
+    public void ActivationPayload_ReadsZeroWhenNeverWritten()
+    {
+        // Arrange
+        using var state = new SharedState(TestNames.UniqueMapName());
+
+        // Act
+        var payload = state.ConsumeActivationPayload();
+
+        // Assert
+        Assert.Equal(0L, payload.LaunchQpc);
+        Assert.Equal(Constants.TriggerButtonUnknown, payload.ButtonCode);
+    }
 }

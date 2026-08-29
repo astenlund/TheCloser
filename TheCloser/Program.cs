@@ -10,7 +10,6 @@ public static class Program
 {
     private const int DaemonPinPollAttempts = 20;
     private const int DaemonPinPollIntervalMs = 50;
-    private const long StartupIntervalThresholdMs = 200;
 
     public static string AssemblyName => typeof(Program).Assembly.GetName().Name!;
 
@@ -50,9 +49,9 @@ public static class Program
             var elapsedSinceLastRun = Environment.TickCount64 - sharedState.ReadThrottleTick();
 
             // Negative can only mean a stale-format (pre-tick-count) or foreign value; treat it as not throttled.
-            if (elapsedSinceLastRun is >= 0 and < StartupIntervalThresholdMs)
+            if (elapsedSinceLastRun is >= 0 and < ThrottleThresholdMs)
             {
-                LogEarlyExit(logger, $"The previous instance was started less than {StartupIntervalThresholdMs}ms ago. Exiting...");
+                LogEarlyExit(logger, $"The previous instance was started less than {ThrottleThresholdMs}ms ago. Exiting...");
 
                 return;
             }
