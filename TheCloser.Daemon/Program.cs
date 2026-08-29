@@ -1,4 +1,5 @@
-﻿using TheCloser.Shared;
+using System.Diagnostics;
+using TheCloser.Shared;
 
 using static TheCloser.Shared.Constants;
 
@@ -45,32 +46,58 @@ public static class Program
 
     private static void Run()
     {
-        // The shared memory must be pinned before the mutex is published: the app treats the mutex's existence as proof that the pin is in place.
-        using var sharedState = new SharedState(MemoryMappedFileName);
-        using var mutex = new Mutex(true, DaemonMutexName, out var createdNew);
-
-        if (!createdNew)
+        var daemonStart = Stopwatch.GetTimestamp();
+        var exeDirectory = Path.GetDirectoryName(Environment.ProcessPath)!;
+        var liveRoot = DaemonConfiguration.Build(exeDirectory, Logger.Log);
+        try
         {
-            Logger.Log("Daemon is already running. Exiting...");
+            var lastGood = new LastGoodConfiguration();
+            ActivationHandler? handler = null;
+            DaemonRuntime? runtime = null;
 
-            return;
+            runtime = new DaemonRuntime(
+                Logger,
+                MemoryMappedFileName,
+                DaemonMutexName,
+                ActivationEventName,
+                DaemonExitEventName,
+                onActivation: sharedState =>
+                {
+                    handler ??= new ActivationHandler(
+                        sharedState,
+                        Logger,
+                        GuardMutexName,
+                        settings: () => lastGood.Refresh(liveRoot, Logger.Log),
+                        // The WindowCloser (and the ForegroundActivator it owns) is constructed
+                        // inside this lambda, never hoisted to a field: PerformedInputAttach is
+                        // OR-assigned and never reset, so it is sticky for a pipeline instance's
+                        // life. A daemon-lifetime instance would therefore report an attach on every
+                        // close forever after the first real one, dispatching the healer after every
+                        // close for the daemon's whole life. Per-activation construction is a spec
+                        // requirement, not an allocation the daemon can optimize away.
+                        runClose: snapshot =>
+                        {
+                            var closer = new WindowCloser(snapshot, sharedState, Logger);
+                            closer.CloseWindowUnderCursor();
+
+                            return closer.PerformedInputAttach;
+                        },
+                        dispatchHealer: () => runtime!.DispatchHealer(() => new TriggerButtonHealer(Logger).HealStuckButtons()),
+                        initialHandlerExit: daemonStart);
+                    handler.HandleActivation();
+                },
+                watchdogTick: RepairIfCrashed,
+                WatchdogInterval);
+
+            runtime.Run();
         }
-
-        using var exitEvent = new EventWaitHandle(false, EventResetMode.AutoReset, DaemonExitEventName);
-
-        while (!exitEvent.WaitOne(WatchdogInterval))
+        finally
         {
-            try
+            if (liveRoot is IDisposable disposableRoot)
             {
-                RepairIfCrashed(sharedState);
-            }
-            catch (Exception ex)
-            {
-                Logger.Log(ex.ToString());
+                disposableRoot.Dispose();
             }
         }
-
-        Logger.Log("Daemon STOP signal received. Exiting...");
     }
 
     private static void RepairIfCrashed(SharedState sharedState)
