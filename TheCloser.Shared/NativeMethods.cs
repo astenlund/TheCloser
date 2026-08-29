@@ -58,20 +58,22 @@ internal static class NativeMethods
         return GetAncestor(hWnd, GA_ROOT);
     }
 
-    public static bool AttachThreadInput(IntPtr hWnd)
+    public static uint AttachThreadInputToWindow(IntPtr hWnd)
     {
         var currentThreadId = GetCurrentThreadId();
         var targetThreadId = GetWindowThreadProcessId(hWnd, out _);
 
-        return AttachThreadInput(currentThreadId, targetThreadId, true);
+        if (targetThreadId == 0 || !AttachThreadInput(currentThreadId, targetThreadId, true))
+        {
+            return 0;
+        }
+
+        return targetThreadId;
     }
 
-    public static bool DetachThreadInput(IntPtr hWnd)
+    public static bool DetachThreadInputFromThread(uint threadId)
     {
-        var currentThreadId = GetCurrentThreadId();
-        var targetThreadId = GetWindowThreadProcessId(hWnd, out _);
-
-        return AttachThreadInput(currentThreadId, targetThreadId, false);
+        return AttachThreadInput(GetCurrentThreadId(), threadId, false);
     }
 
     [DllImport("user32.dll", SetLastError = true)]

@@ -61,7 +61,32 @@ public sealed class ForegroundActivatorTests : IDisposable
         activator.TryActivate(TargetWindow, Left);
 
         // Assert
-        Assert.Equal(new[] { "attach:200", "setForeground:200", "detach:200" }, native.Calls);
+        Assert.Equal(new[] { "attach:200", "setForeground:200", "detach:7" }, native.Calls);
+    }
+
+    [Fact]
+    public async Task TryActivate_DetachesByCapturedIds_AndLogsFailedDetach()
+    {
+        // Arrange: distinct owner and target thread ids, and detaches that fail, simulating a
+        // target window destroyed mid-close.
+        var native = new FakeNativeApi
+        {
+            ForegroundWindow = OwnerWindow,
+            ThreadIdOf = handle => handle == TargetWindow ? 42u : 7u,
+            DetachSucceeds = false,
+            GetWindowRectSucceeds = false
+        };
+        var activator = CreateActivator(native);
+
+        // Act
+        activator.TryActivate(TargetWindow, Left);
+        await _tempLogger.DrainAsync();
+
+        // Assert: both captured ids were detached (never re-resolved from the window), and the
+        // failed returns were logged rather than discarded.
+        Assert.Contains("detach:42", native.Calls);
+        Assert.Contains("detach:7", native.Calls);
+        Assert.Contains("DetachThreadInput(42)", File.ReadAllText(_tempLogger.LogPath));
     }
 
     [Fact]
@@ -268,6 +293,8 @@ public sealed class ForegroundActivatorTests : IDisposable
 
         public bool AttachSucceeds { get; set; } = true;
 
+        public bool DetachSucceeds { get; set; } = true;
+
         public bool SetForegroundSucceeds { get; set; } = true;
 
         public bool GetWindowRectSucceeds { get; set; } = true;
@@ -290,18 +317,18 @@ public sealed class ForegroundActivatorTests : IDisposable
 
         public uint GetWindowThreadId(IntPtr hWnd) => ThreadIdOf(hWnd);
 
-        public bool AttachThreadInput(IntPtr hWnd)
+        public uint AttachThreadInput(IntPtr hWnd)
         {
             Calls.Add($"attach:{hWnd}");
 
-            return AttachSucceeds;
+            return AttachSucceeds ? ThreadIdOf(hWnd) : 0;
         }
 
-        public bool DetachThreadInput(IntPtr hWnd)
+        public bool DetachThreadInput(uint threadId)
         {
-            Calls.Add($"detach:{hWnd}");
+            Calls.Add($"detach:{threadId}");
 
-            return true;
+            return DetachSucceeds;
         }
 
         public bool SetForegroundWindow(IntPtr hWnd)

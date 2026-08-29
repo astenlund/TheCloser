@@ -14,9 +14,13 @@ internal interface INativeWindowApi
 
     uint GetWindowThreadId(IntPtr hWnd);
 
-    bool AttachThreadInput(IntPtr hWnd);
+    // Returns the peer thread id that was attached, or 0 when the attach failed. The caller
+    // detaches by that captured id: re-resolving the thread from the window at detach time is a
+    // silent no-op once the window is destroyed, which would leak the attachment on a
+    // long-lived thread (see the fix design's detach hardening).
+    uint AttachThreadInput(IntPtr hWnd);
 
-    bool DetachThreadInput(IntPtr hWnd);
+    bool DetachThreadInput(uint threadId);
 
     bool SetForegroundWindow(IntPtr hWnd);
 

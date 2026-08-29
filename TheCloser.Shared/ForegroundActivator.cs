@@ -90,18 +90,19 @@ internal class ForegroundActivator : IForegroundActivator
         using var suppression = _suppressionFactory();
 
         var foregroundWindow = _native.GetForegroundWindow();
-        var attachedToForegroundOwner = TryAttachToForegroundOwner(foregroundWindow, targetWindow);
+        var foregroundOwnerThreadId = TryAttachToForegroundOwner(foregroundWindow, targetWindow);
+        var targetThreadId = 0u;
 
         try
         {
-            var attachedToTarget = _native.AttachThreadInput(targetWindow);
+            targetThreadId = _native.AttachThreadInput(targetWindow);
 
-            if (!attachedToTarget)
+            if (targetThreadId == 0)
             {
                 _logger.Log($"AttachThreadInput failed (error {Marshal.GetLastPInvokeError()}).");
             }
 
-            PerformedInputAttach |= attachedToTarget || attachedToForegroundOwner;
+            PerformedInputAttach |= targetThreadId != 0 || foregroundOwnerThreadId != 0;
 
             if (!_native.SetForegroundWindow(targetWindow))
             {
@@ -110,14 +111,17 @@ internal class ForegroundActivator : IForegroundActivator
         }
         finally
         {
-            // Detach before the settle wait: the attaches are only needed around the
-            // SetForegroundWindow call, and every attached millisecond widens the window in which
-            // the key-state resync can swallow in-flight input (see TriggerButtonHealer).
-            _native.DetachThreadInput(targetWindow);
-
-            if (attachedToForegroundOwner)
+            // Detach before the settle wait, by the ids captured at attach time: a window
+            // destroyed mid-close makes a handle-resolved detach a silent no-op, which on the
+            // daemon's long-lived loop thread would accumulate input-queue attachments.
+            if (targetThreadId != 0 && !_native.DetachThreadInput(targetThreadId))
             {
-                _native.DetachThreadInput(foregroundWindow);
+                _logger.Log($"DetachThreadInput({targetThreadId}) failed (error {Marshal.GetLastPInvokeError()}).");
+            }
+
+            if (foregroundOwnerThreadId != 0 && !_native.DetachThreadInput(foregroundOwnerThreadId))
+            {
+                _logger.Log($"DetachThreadInput({foregroundOwnerThreadId}) failed (error {Marshal.GetLastPInvokeError()}).");
             }
         }
 
@@ -130,28 +134,28 @@ internal class ForegroundActivator : IForegroundActivator
     // foreground owner), and the lock-timeout suppression does not lift that rule. Sharing the
     // owner's input queue borrows its permission so SetForegroundWindow can succeed. Skipped when
     // the owner shares the target's thread: the target attach already covers that queue.
-    private bool TryAttachToForegroundOwner(IntPtr foregroundWindow, IntPtr targetWindow)
+    private uint TryAttachToForegroundOwner(IntPtr foregroundWindow, IntPtr targetWindow)
     {
         if (foregroundWindow == IntPtr.Zero)
         {
             _logger.Log("Skipping the foreground owner attach (no foreground window).");
 
-            return false;
+            return 0;
         }
 
         if (_native.GetWindowThreadId(foregroundWindow) == _native.GetWindowThreadId(targetWindow))
         {
-            return false;
+            return 0;
         }
 
-        if (!_native.AttachThreadInput(foregroundWindow))
+        var ownerThreadId = _native.AttachThreadInput(foregroundWindow);
+
+        if (ownerThreadId == 0)
         {
             _logger.Log($"AttachThreadInput to the foreground owner failed (error {Marshal.GetLastPInvokeError()}).");
-
-            return false;
         }
 
-        return true;
+        return ownerThreadId;
     }
 
     private bool TryActivateByClicking(IntPtr targetWindow, TitleBarClickPosition clickPosition)

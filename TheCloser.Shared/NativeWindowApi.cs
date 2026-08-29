@@ -10,9 +10,9 @@ internal sealed class NativeWindowApi : INativeWindowApi
 
     public uint GetWindowThreadId(IntPtr hWnd) => NativeMethods.GetWindowThreadProcessId(hWnd, out _);
 
-    public bool AttachThreadInput(IntPtr hWnd) => NativeMethods.AttachThreadInput(hWnd);
+    public uint AttachThreadInput(IntPtr hWnd) => NativeMethods.AttachThreadInputToWindow(hWnd);
 
-    public bool DetachThreadInput(IntPtr hWnd) => NativeMethods.DetachThreadInput(hWnd);
+    public bool DetachThreadInput(uint threadId) => NativeMethods.DetachThreadInputFromThread(threadId);
 
     public bool SetForegroundWindow(IntPtr hWnd) => NativeMethods.SetForegroundWindow(hWnd);
 
