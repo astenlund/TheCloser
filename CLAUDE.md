@@ -36,6 +36,17 @@ dotnet build --no-incremental
 dotnet test TheCloser.Tests --no-build
 ```
 
+### AutoHotkey syntax validation
+```powershell
+$script = (Resolve-Path ./TheCloser.ahk).Path
+$ahk = Start-Process -FilePath 'C:/Program Files/AutoHotkey/AutoHotkeyU64.exe' -ArgumentList '/iLib', 'NUL', '/ErrorStdOut', ('"{0}"' -f $script) -Wait -PassThru
+if ($ahk.ExitCode -ne 0) {
+    throw "AutoHotkey syntax validation failed with exit code $($ahk.ExitCode)."
+}
+```
+
+Run this parse-only AutoHotkey v1 check from PowerShell, not Git Bash: MSYS rewrites slash-prefixed switches, and PowerShell's call operator does not reliably wait for this GUI-subsystem executable or update `$LASTEXITCODE`. Exit code 0 confirms syntax only; runtime `DllCall` type strings remain unchecked.
+
 ## Architecture
 
 TheCloser is a Windows utility that closes windows/tabs under the mouse cursor. It consists of three projects plus a test project. All kernel object names are session-local (no `Global\` prefix) and centralized in `TheCloser.Shared/Constants.cs`; `TheCloser.ahk` carries the one deliberate hand-synchronized copy because AutoHotkey cannot consume the C# constants.
