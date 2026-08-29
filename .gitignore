@@ -247,3 +247,6 @@ ModelManifest.xml
 
 # Machine-local deploy settings (see deploy.settings.example.psd1)
 deploy.settings.psd1
+
+# Subagent scratch state (subagent-driven development)
+.superpowers/
