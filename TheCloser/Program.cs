@@ -9,23 +9,26 @@ namespace TheCloser;
 public static class Program
 {
     private const int DaemonPinPollAttempts = 20;
+    private const int DaemonPinPollIntervalMs = 50;
     private const long StartupIntervalThresholdMs = 200;
-
-    private static readonly TimeSpan DaemonPinPollInterval = TimeSpan.FromMilliseconds(50);
-    private static readonly Logger Logger = new(AssemblyName);
-    private static readonly string ExeDirectory = Path.GetDirectoryName(Environment.ProcessPath)!;
 
     public static string AssemblyName => typeof(Program).Assembly.GetName().Name!;
 
-    public static void Main()
+    public static async Task Main(string[] args)
     {
+        Logger? logger = null;
+
         try
         {
+            logger = new Logger(AssemblyName);
+
+            var exeDirectory = Path.GetDirectoryName(Environment.ProcessPath)!;
+
             using var mutex = new Mutex(initiallyOwned: true, GuardMutexName, out var createdNew);
 
             if (!createdNew)
             {
-                LogEarlyExit("The previous instance is still running. Exiting...");
+                LogEarlyExit(logger, "The previous instance is still running. Exiting...");
 
                 return;
             }
@@ -34,9 +37,12 @@ public static class Program
 
             // The pending pre-check keeps the common no-record startup silent; the guard mutex held
             // above means the daemon cannot repair concurrently, so the two reads cannot race.
-            if (sharedState.TryReadTimeoutRepair(out _))
+            var repairPending = sharedState.TryReadTimeoutRepair(out _);
+
+            if (repairPending)
             {
-                Logger.Log(TimeoutRepair.TryRestorePending(sharedState)
+                var restored = TimeoutRepair.TryRestorePending(sharedState);
+                logger.Log(restored
                     ? "Restored the foreground lock timeout after a detected crash."
                     : "Failed to restore the foreground lock timeout; keeping the repair record.");
             }
@@ -46,19 +52,21 @@ public static class Program
             // Negative can only mean a stale-format (pre-tick-count) or foreign value; treat it as not throttled.
             if (elapsedSinceLastRun is >= 0 and < StartupIntervalThresholdMs)
             {
-                LogEarlyExit($"The previous instance was started less than {StartupIntervalThresholdMs}ms ago. Exiting...");
+                LogEarlyExit(logger, $"The previous instance was started less than {StartupIntervalThresholdMs}ms ago. Exiting...");
 
                 return;
             }
 
-            if (TryEnsureDaemonProcess())
+            if (TryEnsureDaemonProcess(exeDirectory, logger))
             {
-                WaitForDaemonPin();
+                WaitForDaemonPin(logger);
             }
 
             sharedState.WriteThrottleTick(Environment.TickCount64);
 
-            var windowCloser = new WindowCloser(BuildConfiguration(), sharedState, Logger);
+            var configuration = BuildConfiguration(exeDirectory);
+
+            var windowCloser = new WindowCloser(configuration, sharedState, logger);
             windowCloser.CloseWindowUnderCursor();
 
             if (windowCloser.PerformedInputAttach)
@@ -68,40 +76,49 @@ public static class Program
                 // "previous instance still running" meanwhile. Any pending repair record at this
                 // point means a failed restore that the daemon watchdog should pick up anyway.
                 mutex.ReleaseMutex();
-                new TriggerButtonHealer(Logger).HealStuckButtons();
+                new TriggerButtonHealer(logger).HealStuckButtons();
             }
 
-            Logger.Log("");
+            logger.Log("");
         }
         catch (Exception ex)
         {
-            Logger.Log(ex.ToString());
+            logger?.Log(ex.ToString());
+        }
+        finally
+        {
+            if (logger is not null)
+            {
+                await logger.DisposeAsync();
+            }
         }
     }
 
-    private static void LogEarlyExit(string reason)
+    private static void LogEarlyExit(Logger logger, string reason)
     {
-        Logger.Log(reason);
-        Logger.Log("");
+        logger.Log(reason);
+        logger.Log("");
     }
 
-    private static IConfigurationRoot BuildConfiguration() => new ConfigurationBuilder()
-        .SetBasePath(ExeDirectory)
+    private static IConfigurationRoot BuildConfiguration(string exeDirectory) => new ConfigurationBuilder()
+        .SetBasePath(exeDirectory)
         .AddJsonFile("appsettings.json", optional: true)
         .Build();
 
-    private static bool TryEnsureDaemonProcess()
+    private static bool TryEnsureDaemonProcess(string exeDirectory, Logger logger)
     {
-        if (DaemonProcessExists())
+        var daemonProcessExists = DaemonProcessExists();
+
+        if (daemonProcessExists)
         {
             return true;
         }
 
-        var daemonExePath = Path.Combine(ExeDirectory, $"{DaemonAssemblyName}.exe");
+        var daemonExePath = Path.Combine(exeDirectory, $"{DaemonAssemblyName}.exe");
 
         if (!File.Exists(daemonExePath))
         {
-            Logger.Log("Could not find Daemon executable.");
+            logger.Log("Could not find Daemon executable.");
 
             return false;
         }
@@ -131,7 +148,7 @@ public static class Program
         return daemonProcesses.Length != 0;
     }
 
-    private static void WaitForDaemonPin()
+    private static void WaitForDaemonPin(Logger logger)
     {
         // The app's own SharedState handle keeps the shared memory alive, so its existence proves nothing; the daemon publishes its mutex only after pinning.
         for (var attempt = 0; attempt < DaemonPinPollAttempts; attempt++)
@@ -143,9 +160,9 @@ public static class Program
                 return;
             }
 
-            Thread.Sleep(DaemonPinPollInterval);
+            Thread.Sleep(DaemonPinPollIntervalMs);
         }
 
-        Logger.Log("Timed out waiting for the daemon to pin the shared memory.");
+        logger.Log("Timed out waiting for the daemon to pin the shared memory.");
     }
 }

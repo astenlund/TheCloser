@@ -200,7 +200,7 @@ public sealed class ForegroundActivatorTests : IDisposable
     }
 
     [Fact]
-    public void TryActivate_CursorPositionUnreadable_SkipsTheClickFallback()
+    public async Task TryActivate_CursorPositionUnreadable_SkipsTheClickFallback()
     {
         // Arrange
         var native = new FakeNativeApi
@@ -214,6 +214,7 @@ public sealed class ForegroundActivatorTests : IDisposable
 
         // Act
         var activated = activator.TryActivate(TargetWindow, Left);
+        await _tempLogger.DrainAsync();
 
         // Assert: without a saved home position the fallback must not move the cursor at all.
         Assert.False(activated);
@@ -222,7 +223,7 @@ public sealed class ForegroundActivatorTests : IDisposable
     }
 
     [Fact]
-    public void TryActivate_SendInputInjectsFewerEvents_LogsAndStillRestoresTheCursor()
+    public async Task TryActivate_SendInputInjectsFewerEvents_LogsAndStillRestoresTheCursor()
     {
         // Arrange
         var native = new FakeNativeApi
@@ -237,6 +238,7 @@ public sealed class ForegroundActivatorTests : IDisposable
 
         // Act
         var activated = activator.TryActivate(TargetWindow, Left);
+        await _tempLogger.DrainAsync();
 
         // Assert
         Assert.False(activated);

@@ -56,13 +56,14 @@ public sealed class TriggerButtonHealerTests : IDisposable
     }
 
     [Fact]
-    public void HealStuckButtons_ButtonStuckPastDeadline_LogsTheInjection()
+    public async Task HealStuckButtons_ButtonStuckPastDeadline_LogsTheInjection()
     {
         // Arrange
         var healer = new TriggerButtonHealer(_tempLogger.Logger, virtualKey => virtualKey == VK_XBUTTON2, _ => { }, _ => { });
 
         // Act
         healer.HealStuckButtons();
+        await _tempLogger.DrainAsync();
 
         // Assert
         var logContent = File.ReadAllText(_tempLogger.LogPath);

@@ -18,8 +18,11 @@ internal sealed class TempLogger : IDisposable
 
     public string LogPath { get; }
 
+    public ValueTask DrainAsync() => Logger.DisposeAsync();
+
     public void Dispose()
     {
+        Logger.DisposeAsync().AsTask().GetAwaiter().GetResult();
         File.Delete(LogPath);
         File.Delete(LogPath + ".old");
     }

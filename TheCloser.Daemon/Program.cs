@@ -9,7 +9,7 @@ public static class Program
     private static readonly TimeSpan WatchdogInterval = TimeSpan.FromSeconds(5);
     private static readonly Logger Logger = new(DaemonAssemblyName);
 
-    public static void Main(string[] args)
+    public static async Task Main(string[] args)
     {
         try
         {
@@ -36,6 +36,10 @@ public static class Program
         catch (Exception ex)
         {
             Logger.Log(ex.ToString());
+        }
+        finally
+        {
+            await Logger.DisposeAsync();
         }
     }
 

@@ -15,4 +15,7 @@
   <ItemGroup>
     <Using Include="Xunit" />
   </ItemGroup>
+  <ItemGroup>
+    <None Update="Fixtures\HoldLogMutex.ps1" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

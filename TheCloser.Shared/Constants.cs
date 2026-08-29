@@ -11,4 +11,6 @@ public static class Constants
     public const long MemoryMappedFileSize = 1024;
     public const string DaemonStartArgument = "--start";
     public const string DaemonStopArgument = "--stop";
+
+    public static string GetLogMutexName(string appName) => appName + "LogMutex";
 }

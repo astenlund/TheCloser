@@ -68,13 +68,14 @@ public sealed class WindowCloserTests : IDisposable
     }
 
     [Fact]
-    public void ResolveKillMethodName_UnknownMethod_LogsTheFallbackWarning()
+    public async Task ResolveKillMethodName_UnknownMethod_LogsTheFallbackWarning()
     {
         // Arrange
         var closer = CreateCloser();
 
         // Act
         closer.ResolveKillMethodName("NO-SUCH-METHOD");
+        await _tempLogger.DrainAsync();
 
         // Assert
         Assert.Contains("No kill action configured for method 'NO-SUCH-METHOD'", File.ReadAllText(_tempLogger.LogPath));
@@ -114,7 +115,7 @@ public sealed class WindowCloserTests : IDisposable
     }
 
     [Fact]
-    public void SendKeyPressIfForeground_ActivationFails_SendsNoKeystrokeAndLogsTheFailure()
+    public async Task SendKeyPressIfForeground_ActivationFails_SendsNoKeystrokeAndLogsTheFailure()
     {
         // Arrange
         var keystrokes = 0;
@@ -128,6 +129,7 @@ public sealed class WindowCloserTests : IDisposable
 
         // Act
         closer.SendKeyPressIfForeground(new IntPtr(0xAB), TitleBarClickPosition.Left, VirtualKeyCode.VK_W, VirtualKeyCode.CONTROL);
+        await _tempLogger.DrainAsync();
 
         // Assert
         Assert.Equal(0, keystrokes);
