@@ -18,14 +18,12 @@ public class ActivationHandlerTests
         public TempLogger TempLogger { get; } = new();
         public List<string> Events { get; } = [];
         public long Now = Stopwatch.GetTimestamp();
-        public long? Baseline;                    // null lets the handler default to construction time
         public long Tick = 100_000;
         public int TickReadCount;
         public bool CloseResult;
         public bool CloseThrows;
-        public bool RestoreResult = true;
 
-        public ActivationHandler Build() => new(
+        public ActivationHandler Build(long? initialHandlerExit = null, Action? dispatchHealer = null) => new(
             State,
             TempLogger.Logger,
             MutexName,
@@ -36,7 +34,7 @@ public class ActivationHandlerTests
 
                 return CloseThrows ? throw new InvalidOperationException("close failed") : CloseResult;
             },
-            dispatchHealer: () => Events.Add("healer"),
+            dispatchHealer: dispatchHealer ?? (() => Events.Add("healer")),
             timestamp: () => Now,
             tickCount: () =>
             {
@@ -48,9 +46,9 @@ public class ActivationHandlerTests
             {
                 Events.Add("restore");
 
-                return RestoreResult;
+                return true;
             },
-            initialHandlerExit: Baseline);
+            initialHandlerExit: initialHandlerExit);
 
         public void AdvancePastThrottle() => Tick += ThrottleThresholdMs + 1;
 
@@ -172,8 +170,7 @@ public class ActivationHandlerTests
         var daemonStart = h.Now;
         var press = h.Now + Stopwatch.Frequency / 100;
         h.Now += Stopwatch.Frequency / 50;        // construction lands 20 ms after the press
-        h.Baseline = daemonStart;
-        var handler = h.Build();
+        var handler = h.Build(initialHandlerExit: daemonStart);
         h.State.WriteActivationPayload(press, TriggerButtonXButton2);
 
         // Act
@@ -307,5 +304,37 @@ public class ActivationHandlerTests
 
         // Assert
         Assert.Equal(1, h.Events.Count(e => e == "healer"));
+    }
+
+    [Fact]
+    public void AttachClose_ReleasesGuardMutexBeforeHealerDispatch()
+    {
+        // Arrange
+        using var h = new Harness { CloseResult = true };
+        bool? mutexWasAvailable = null;
+        var handler = h.Build(dispatchHealer: () =>
+        {
+            var probeThread = new Thread(() =>
+            {
+                using var probe = new Mutex(initiallyOwned: false, h.MutexName);
+                mutexWasAvailable = probe.WaitOne(0);
+
+                if (mutexWasAvailable.Value)
+                {
+                    probe.ReleaseMutex();
+                }
+            })
+            {
+                IsBackground = true
+            };
+            probeThread.Start();
+            Assert.True(probeThread.Join(WaitBudget), "the mutex probe never completed");
+        });
+
+        // Act
+        handler.HandleActivation();
+
+        // Assert
+        Assert.Equal(true, mutexWasAvailable);
     }
 }
