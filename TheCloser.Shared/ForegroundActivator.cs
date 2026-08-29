@@ -1,10 +1,9 @@
 using System.Runtime.InteropServices;
-using TheCloser.Shared;
 
-using static TheCloser.NativeMethods;
-using static TheCloser.TitleBarClickPosition;
+using static TheCloser.Shared.NativeMethods;
+using static TheCloser.Shared.TitleBarClickPosition;
 
-namespace TheCloser;
+namespace TheCloser.Shared;
 
 // Brings the target window to the foreground via an escalation ladder: already-foreground check,
 // native activation of the root window (under a foreground-lock suppression, with the input

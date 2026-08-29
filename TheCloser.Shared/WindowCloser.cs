@@ -3,12 +3,11 @@ using System.Runtime.InteropServices;
 using GregsStack.InputSimulatorStandard;
 using GregsStack.InputSimulatorStandard.Native;
 using Microsoft.Extensions.Configuration;
-using TheCloser.Shared;
 
-using static TheCloser.NativeMethods;
-using static TheCloser.TitleBarClickPosition;
+using static TheCloser.Shared.NativeMethods;
+using static TheCloser.Shared.TitleBarClickPosition;
 
-namespace TheCloser;
+namespace TheCloser.Shared;
 
 internal class WindowCloser
 {

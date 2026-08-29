@@ -1,4 +1,6 @@
-using static TheCloser.NativeMethods;
+using TheCloser.Shared;
+
+using static TheCloser.Shared.NativeMethods;
 
 namespace TheCloser.Tests;
 

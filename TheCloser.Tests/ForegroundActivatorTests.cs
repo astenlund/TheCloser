@@ -1,8 +1,8 @@
 using System.Drawing;
 using TheCloser.Shared;
 
-using static TheCloser.NativeMethods;
-using static TheCloser.TitleBarClickPosition;
+using static TheCloser.Shared.NativeMethods;
+using static TheCloser.Shared.TitleBarClickPosition;
 
 namespace TheCloser.Tests;
 

@@ -1,8 +1,8 @@
 using System.Drawing;
 
-using static TheCloser.NativeMethods;
+using static TheCloser.Shared.NativeMethods;
 
-namespace TheCloser;
+namespace TheCloser.Shared;
 
 // Injectable seam over the NativeMethods statics that ForegroundActivator drives, so the
 // escalation ladder is testable without touching real windows, input queues, or the cursor.

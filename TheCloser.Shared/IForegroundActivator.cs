@@ -1,4 +1,4 @@
-namespace TheCloser;
+namespace TheCloser.Shared;
 
 // Seam between WindowCloser and the activation ladder so dispatch tests can script activation
 // outcomes without touching real windows.

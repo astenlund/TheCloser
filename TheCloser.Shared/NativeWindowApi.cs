@@ -1,6 +1,6 @@
 using System.Drawing;
 
-namespace TheCloser;
+namespace TheCloser.Shared;
 
 internal sealed class NativeWindowApi : INativeWindowApi
 {

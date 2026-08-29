@@ -1,4 +1,4 @@
-﻿namespace TheCloser;
+﻿namespace TheCloser.Shared;
 
 internal enum TitleBarClickPosition
 {

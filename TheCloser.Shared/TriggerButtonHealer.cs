@@ -1,20 +1,21 @@
 using System.Runtime.InteropServices;
-using TheCloser.Shared;
 
-using static TheCloser.NativeMethods;
+using static TheCloser.Shared.NativeMethods;
 
-namespace TheCloser;
+namespace TheCloser.Shared;
 
 // An input attach can swallow the physical release of the mouse button that invoked the app:
 // AttachThreadInput resynchronizes key state between the attached threads, and a release in
 // flight during the attach window is lost, leaving the button stuck down system-wide (observed
 // 2026-07-11 with XBUTTON2 under an AutoHotkey binding, which then swallowed every mouse click).
-// Rather than delaying activation until the button is released, the app monitors the trigger
-// buttons after the close operation completes: a genuine hold clears itself on release, while a
-// stranded state reads down forever, so anything still down at the deadline gets its release
-// injected. Deliberately app-hosted with no daemon backstop: a leak requires the sub-millisecond
-// attach race AND an app death inside this monitor, and the daemon's 5s watchdog tick would heal
-// far slower than the monitor does.
+// Rather than delaying activation until the button is released, the hosting process monitors the
+// trigger buttons after the close operation completes: a genuine hold clears itself on release,
+// while a stranded state reads down forever, so anything still down at the deadline gets its
+// release injected. Two hosts run this monitor: the daemon dispatches it as a background task
+// after an attach-performing close (so the linger never blocks the next activation), and the
+// fallback app runs it inline after its close exactly as before. Overlapping monitors are safe:
+// injection happens only for a button still observed down at the deadline, and a duplicated
+// release for an already-up button is an OS-level no-op.
 internal sealed class TriggerButtonHealer
 {
     private const int MonitorAttempts = 200;

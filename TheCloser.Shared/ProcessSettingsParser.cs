@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Configuration;
 
-namespace TheCloser;
+namespace TheCloser.Shared;
 
 internal static class ProcessSettingsParser
 {

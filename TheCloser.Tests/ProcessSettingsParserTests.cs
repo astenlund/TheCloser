@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Configuration;
+using TheCloser.Shared;
 
 namespace TheCloser.Tests;
 
