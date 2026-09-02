@@ -52,7 +52,10 @@ public class ActivationHandlerTests
             },
             initialHandlerExit: initialHandlerExit);
 
-        public void AdvancePastThrottle() => Tick += ThrottleThresholdMs + 1;
+        // Twice the threshold: the throttle dates the incoming press by its latency, so a bare
+        // threshold-plus-one advance would leave a press with tens of milliseconds of latency
+        // inside the window.
+        public void AdvancePastThrottle() => Tick += 2 * ThrottleThresholdMs;
 
         // Drains (disposes) the logger, then reads the whole log. Call at most once, always last.
         public async Task<string> ReadLogAsync()
