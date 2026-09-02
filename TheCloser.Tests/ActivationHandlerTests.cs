@@ -22,6 +22,7 @@ public class ActivationHandlerTests
         public int TickReadCount;
         public bool CloseResult;
         public bool CloseThrows;
+        public long CloseAdvance;
 
         public ActivationHandler Build(long? initialHandlerExit = null, Action? dispatchHealer = null) => new(
             State,
@@ -31,6 +32,7 @@ public class ActivationHandlerTests
             runClose: _ =>
             {
                 Events.Add("close");
+                Now += CloseAdvance;
 
                 return CloseThrows ? throw new InvalidOperationException("close failed") : CloseResult;
             },
@@ -193,7 +195,89 @@ public class ActivationHandlerTests
 
         // Assert
         Assert.Single(h.Events, e => e == "close");
-        Assert.Contains("Activation skipped: the previous handling", await h.ReadLogAsync());
+        Assert.Contains("Activation skipped: the press was within", await h.ReadLogAsync());
+    }
+
+    [Fact]
+    public async Task DeferredPressWithinThrottleOfPreviousHandling_IsSkippedWhenHandledLate()
+    {
+        // Arrange: a mouse double activation 90 ms after the first press, queued behind a first
+        // close that stalled the loop for 2 s (observed: SendInput blocked on a slow low-level
+        // hook). Judged by handling time the window has long expired; judged by press time it is
+        // inside the window and must be skipped.
+        using var h = new Harness { CloseAdvance = Stopwatch.Frequency * 2 };
+        var handler = h.Build();
+        var firstPress = h.Now;
+        handler.HandleActivation();
+        var secondPress = firstPress + Stopwatch.Frequency * 90 / 1000;
+        h.Tick += 2000;
+        h.State.WriteActivationPayload(secondPress, TriggerButtonXButton2);
+
+        // Act
+        handler.HandleActivation();
+
+        // Assert
+        Assert.Single(h.Events, e => e == "close");
+        var log = await h.ReadLogAsync();
+        Assert.Contains("(deferred", log);
+        Assert.Contains("Activation skipped: the press was within", log);
+    }
+
+    [Fact]
+    public void PressLandingJustBeforeThePreviousTickWrite_IsSkipped()
+    {
+        // Arrange: the second press lands after the first handler's entry but before its tick
+        // write, so the press-dated elapsed value is slightly negative. That is still a double
+        // activation and must be throttled; only a large magnitude means a foreign tick.
+        using var h = new Harness();
+        var handler = h.Build();
+        handler.HandleActivation();
+        var secondPress = h.Now;
+        h.Now += Stopwatch.Frequency * 2;
+        h.Tick += 1990;
+        h.State.WriteActivationPayload(secondPress, TriggerButtonXButton2);
+
+        // Act
+        handler.HandleActivation();
+
+        // Assert
+        Assert.Single(h.Events, e => e == "close");
+    }
+
+    [Fact]
+    public void ForeignThrottleTickFarAhead_IsNotThrottled()
+    {
+        // Arrange: a stale-format or foreign tick reads as a huge negative elapsed value; the
+        // symmetric window must stay narrow enough to leave it unthrottled, as before.
+        using var h = new Harness();
+        var handler = h.Build();
+        h.State.WriteThrottleTick(h.Tick + 10_000);
+
+        // Act
+        handler.HandleActivation();
+
+        // Assert
+        Assert.Single(h.Events, e => e == "close");
+    }
+
+    [Fact]
+    public void DeferredPressOutsideThrottle_Closes()
+    {
+        // Arrange: a genuine second press 300 ms after the first, handled late; press dating must
+        // not over-throttle it.
+        using var h = new Harness();
+        var handler = h.Build();
+        handler.HandleActivation();
+        var secondPress = h.Now + Stopwatch.Frequency * 300 / 1000;
+        h.Now += Stopwatch.Frequency * 2;
+        h.Tick += 2000;
+        h.State.WriteActivationPayload(secondPress, TriggerButtonXButton2);
+
+        // Act
+        handler.HandleActivation();
+
+        // Assert
+        Assert.Equal(2, h.Events.Count(e => e == "close"));
     }
 
     [Fact]

@@ -60,9 +60,9 @@ internal sealed class ActivationHandler
         {
             var handlerEntry = _timestamp();
             var (launchQpc, buttonCode) = _sharedState.ConsumeActivationPayload();
-            LogLatency(handlerEntry, launchQpc, buttonCode);
+            var pressLatency = LogAndMeasureLatency(handlerEntry, launchQpc, buttonCode);
 
-            RunThrottledActivation();
+            RunThrottledActivation(pressLatency ?? TimeSpan.Zero);
         }
         finally
         {
@@ -70,7 +70,7 @@ internal sealed class ActivationHandler
         }
     }
 
-    private void RunThrottledActivation()
+    private void RunThrottledActivation(TimeSpan pressLatency)
     {
         // Created, acquired, released, and disposed within this one activation, never cached in
         // a field: a live cached handle would make CrashRepair's createdNew liveness check read
@@ -100,11 +100,17 @@ internal sealed class ActivationHandler
                 return;
             }
 
-            var elapsedSinceLastRun = _tickCount() - _sharedState.ReadThrottleTick();
+            // Dated from the press, not from this handling: a double activation queued behind a
+            // stalled close (observed: SendInput blocked 2 s on a slow low-level hook) is still a
+            // double activation when the loop finally reaches it. The window is symmetric because
+            // a press can land between the previous handler's entry and its tick write; a
+            // stale-format or foreign tick reads as a huge magnitude and stays unthrottled.
+            var pressTick = _tickCount() - (long)pressLatency.TotalMilliseconds;
+            var elapsedSinceLastRun = pressTick - _sharedState.ReadThrottleTick();
 
-            if (elapsedSinceLastRun is >= 0 and < ThrottleThresholdMs)
+            if (elapsedSinceLastRun is > -ThrottleThresholdMs and < ThrottleThresholdMs)
             {
-                _logger.Log($"Activation skipped: the previous handling was less than {ThrottleThresholdMs}ms ago.");
+                _logger.Log($"Activation skipped: the press was within {ThrottleThresholdMs}ms of the previous handling.");
 
                 return;
             }
@@ -139,7 +145,7 @@ internal sealed class ActivationHandler
         }
     }
 
-    private void LogLatency(long handlerEntry, long launchQpc, int buttonCode)
+    private TimeSpan? LogAndMeasureLatency(long handlerEntry, long launchQpc, int buttonCode)
     {
         var plausible = launchQpc > 0 && launchQpc <= handlerEntry
             && Stopwatch.GetElapsedTime(launchQpc, handlerEntry) <= MaxPlausibleLatency;
@@ -148,12 +154,14 @@ internal sealed class ActivationHandler
         {
             _logger.Log("Activation: latency unavailable (button unknown).");
 
-            return;
+            return null;
         }
 
         var latency = Stopwatch.GetElapsedTime(launchQpc, handlerEntry);
         var deferred = launchQpc < _lastHandlerExit ? " (deferred)" : string.Empty;
         var button = buttonCode == TriggerButtonXButton2 ? "XButton2" : $"code {buttonCode}";
         _logger.Log($"Activation{deferred}: latency {latency.TotalMilliseconds:F1} ms (button {button}).");
+
+        return latency;
     }
 }

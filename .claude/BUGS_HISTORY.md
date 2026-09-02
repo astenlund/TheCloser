@@ -20,6 +20,18 @@ archaeological.
 
 ## Entries
 
+### Mouse double activation closed two Chrome tabs when the first close stalled
+
+Reported: 2026-09-02. Fixed: 2026-09-02 in the commit titled "fix(shared): date the activation throttle from the press".
+
+**Symptom:** one physical XButton2 press closed two Chrome tabs, both landing about two seconds after the press, a few tens of milliseconds apart.
+
+**Root cause:** two independent things coincided. The mouse emitted a double activation (second press 92 ms after the first; the daemon log shows the same ~100 ms signature routinely, normally skipped). Separately, the first close's SendInput blocked the daemon loop thread for about 2.1 s (the cursor kept moving, so the raw input path was alive; the keyboard hook chain was the stalled path, and PowerToys Keyboard Manager installs a WH_KEYBOARD_LL hook). The throttle in `ActivationHandler` compared the handling time against the previous throttle tick, so when the queued second press was finally handled 2136 ms after the first tick write it passed, even though its payload QPC placed it 92 ms after the first press. The daemon IPC design (`bugs/intermittent-slow-invocation.md`) had accepted exactly this outcome, reasoning that a press collapsed behind a longer close and surviving the throttle honors a real double press; this fix supersedes that decision, since the payload timestamp can tell a double activation from a double press.
+
+**Fix:** the throttle now subtracts the plausible press-to-handler latency from the current tick before comparing against the stored tick, so a press is judged by when the user pressed, not by when the loop reached it. The window is symmetric: a press landing between the previous handler's entry and its tick write yields a small negative elapsed value and is skipped too, while a stale-format or foreign tick still reads as a huge magnitude and stays unthrottled. When the payload is implausible the latency counts as zero and the throttle is equivalent to before: the only new skip case is a tick in the 200ms ahead of now, unreachable with the monotonic tick count both writers share. The standalone fallback app's throttle is unchanged: it is its own press.
+
+**Not fixed, by design:** the first tab still closes late when SendInput stalls; Windows runs every low-level keyboard hook synchronously before delivering injected input, and the daemon cannot shorten that.
+
 ### Intermittent slow invocation after idle
 
 Reported: 2026-08-27. Fixed: 2026-08-29 by the daemon IPC implementation series and verified after all temporary diagnostics were removed.

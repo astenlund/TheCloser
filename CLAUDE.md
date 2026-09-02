@@ -62,7 +62,7 @@ TheCloser is a Windows utility that closes windows/tabs under the mouse cursor. 
 ### TheCloser.Daemon (Background Service)
 - Runs continuously in background, pins `TheCloserSharedState`, and hosts the normal close pipeline in-process
 - Waits on `TheCloserActivationEvent` and `TheCloserDaemonExitEvent` under single-instance mutex `TheCloserDaemonMutex`; it publishes both events before the mutex so an observable daemon is ready for activation and stop signals
-- On activation, consumes the press payload, logs press-to-handler latency, applies the shared 200ms throttle and guard mutex, snapshots the current configuration, closes the window under the cursor, and dispatches the stuck-button healer when required
+- On activation, consumes the press payload, logs press-to-handler latency, applies the shared 200ms throttle (dated from the press timestamp, so a double activation queued behind a stalled close is still skipped) and guard mutex, snapshots the current configuration, closes the window under the cursor, and dispatches the stuck-button healer when required
 - Hot-reloads `appsettings.json`; malformed, exclusively locked, or delete-and-replace transitions keep dispatching through the last good value snapshot
 - Every 5s, if a foreground-lock-timeout repair record is pending and `TheCloserGuardMutex` can be acquired, restores the saved timeout while holding the mutex; activation and watchdog exceptions are isolated
 - Graceful shutdown runs a final repair tick and drains healer tasks before releasing its kernel objects and disposing configuration and logging
