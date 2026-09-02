@@ -133,8 +133,8 @@ public class ActivationHandlerTests
         // Act
         handler.HandleActivation();
 
-        // Assert
-        Assert.Contains("(deferred)", await h.ReadLogAsync());
+        // Assert: the queued wait is the span from the press to the previous handler's exit.
+        Assert.Contains("(deferred; queued 1 ms behind the previous handling)", await h.ReadLogAsync());
     }
 
     [Fact]
@@ -158,7 +158,7 @@ public class ActivationHandlerTests
         handler.HandleActivation();
 
         // Assert
-        Assert.Contains("(deferred)", await h.ReadLogAsync());
+        Assert.Contains("(deferred;", await h.ReadLogAsync());
     }
 
     [Fact]
@@ -179,7 +179,53 @@ public class ActivationHandlerTests
         handler.HandleActivation();
 
         // Assert
-        Assert.DoesNotContain("(deferred)", await h.ReadLogAsync());
+        Assert.DoesNotContain("(deferred", await h.ReadLogAsync());
+    }
+
+    [Fact]
+    public async Task SlowClose_LogsThePhaseBreakdown()
+    {
+        // Arrange: the close phase stalls 2 s (observed: SendInput blocked on a slow low-level
+        // hook); the handling total and the close phase must be attributable from the log.
+        using var h = new Harness { CloseAdvance = Stopwatch.Frequency * 2 };
+        var handler = h.Build();
+
+        // Act
+        handler.HandleActivation();
+
+        // Assert
+        var log = await h.ReadLogAsync();
+        Assert.Contains("Activation took 2000 ms", log);
+        Assert.Contains("close 2000 ms", log);
+    }
+
+    [Fact]
+    public async Task SlowCloseThatThrows_StillLogsTheClosePhase()
+    {
+        // Arrange: the stalled close then throws; the breakdown must still attribute the stall
+        // to the close phase rather than reporting zeros.
+        using var h = new Harness { CloseAdvance = Stopwatch.Frequency * 2, CloseThrows = true };
+        var handler = h.Build();
+
+        // Act
+        handler.HandleActivation();
+
+        // Assert
+        Assert.Contains("close 2000 ms", await h.ReadLogAsync());
+    }
+
+    [Fact]
+    public async Task FastClose_LogsNoPhaseBreakdown()
+    {
+        // Arrange: a normal handling stays under the stall threshold and must not grow the log.
+        using var h = new Harness();
+        var handler = h.Build();
+
+        // Act
+        handler.HandleActivation();
+
+        // Assert
+        Assert.DoesNotContain("Activation took", await h.ReadLogAsync());
     }
 
     [Fact]
@@ -219,7 +265,7 @@ public class ActivationHandlerTests
         // Assert
         Assert.Single(h.Events, e => e == "close");
         var log = await h.ReadLogAsync();
-        Assert.Contains("(deferred", log);
+        Assert.Contains("(deferred;", log);
         Assert.Contains("Activation skipped: the press was within", log);
     }
 

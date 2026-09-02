@@ -23,6 +23,7 @@ public static class Program
             {
                 case DaemonStartArgument:
                     Logger.Log("Daemon starting...");
+                    Logger.Log(LowLevelHooksTimeoutProbe.Describe());
                     Run();
                     break;
                 case DaemonStopArgument:

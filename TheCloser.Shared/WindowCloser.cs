@@ -4,6 +4,7 @@ using GregsStack.InputSimulatorStandard;
 using GregsStack.InputSimulatorStandard.Native;
 using Microsoft.Extensions.Configuration;
 
+using static TheCloser.Shared.Constants;
 using static TheCloser.Shared.NativeMethods;
 using static TheCloser.Shared.TitleBarClickPosition;
 
@@ -19,6 +20,7 @@ internal class WindowCloser
     private readonly IForegroundActivator _activator;
     private readonly Action<VirtualKeyCode[], VirtualKeyCode> _sendKeystroke;
     private readonly Action<TimeSpan> _sleep;
+    private readonly Func<long> _timestamp;
     private readonly Dictionary<string, Action<IntPtr, TitleBarClickPosition>> _killActions;
 
     public WindowCloser(
@@ -27,13 +29,15 @@ internal class WindowCloser
         Logger logger,
         IForegroundActivator? activator = null,
         Action<VirtualKeyCode[], VirtualKeyCode>? sendKeystroke = null,
-        Action<TimeSpan>? sleep = null)
+        Action<TimeSpan>? sleep = null,
+        Func<long>? timestamp = null)
     {
         _config = config;
         _logger = logger;
         _activator = activator ?? new ForegroundActivator(sharedState, logger);
         _sendKeystroke = sendKeystroke ?? SendKeystrokeViaInputSimulator;
         _sleep = sleep ?? Thread.Sleep;
+        _timestamp = timestamp ?? Stopwatch.GetTimestamp;
         _killActions = new Dictionary<string, Action<IntPtr, TitleBarClickPosition>>(StringComparer.OrdinalIgnoreCase)
         {
             { "ALT-F4", (handle, clickPos) => SendKeyPressIfForeground(handle, clickPos, VirtualKeyCode.F4, VirtualKeyCode.LMENU) },
@@ -114,11 +118,60 @@ internal class WindowCloser
         {
             // The settle delay is deliberately the activator's: activation and injection pace the same input queue.
             _sleep(ForegroundActivator.InputSettleDelay);
+
+            var injectionStart = _timestamp();
             _sendKeystroke(modifierKeyCodes, keyCode);
+            var injection = Stopwatch.GetElapsedTime(injectionStart, _timestamp());
+
+            if (injection.TotalMilliseconds >= StallLogThresholdMs)
+            {
+                // SendInput returns only after every low-level keyboard hook has run, so a long
+                // injection means an unresponsive hook owner, not a busy target. The foreground
+                // owner is named to exclude a focus change during the stall.
+                _logger.Log($"Keystroke injection took {injection.TotalMilliseconds:F0} ms; foreground now: {DescribeForegroundProcess()}.");
+            }
         }
         else
         {
             _logger.Log($"Failed to set foreground window for window 0x{targetWindow:X}.");
+        }
+    }
+
+    private static string DescribeForegroundProcess()
+    {
+        try
+        {
+            var processId = GetProcessIdFromWindowHandle(GetForegroundWindow());
+
+            if (processId == 0)
+            {
+                return "no foreground window";
+            }
+
+            return TryGetProcessName(processId) ?? $"exited process {processId}";
+        }
+        catch (Exception ex)
+        {
+            // Diagnostic only: an escape here would abort the close pipeline after the keystroke
+            // was already sent and skip the stuck-button healer, on the very path being diagnosed.
+            return $"unknown ({ex.GetType().Name})";
+        }
+    }
+
+    // Null when the process is gone: GetProcessById throws ArgumentException for an unknown id,
+    // and ProcessName queries lazily, throwing InvalidOperationException if the process exited in
+    // between. Both are the same race between the window lookup and the process lookup.
+    internal static string? TryGetProcessName(int processId)
+    {
+        try
+        {
+            using var process = Process.GetProcessById(processId);
+
+            return process.ProcessName;
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
+        {
+            return null;
         }
     }
 

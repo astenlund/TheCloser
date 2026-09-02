@@ -62,7 +62,8 @@ internal sealed class ActivationHandler
             var (launchQpc, buttonCode) = _sharedState.ConsumeActivationPayload();
             var pressLatency = LogAndMeasureLatency(handlerEntry, launchQpc, buttonCode);
 
-            RunThrottledActivation(pressLatency ?? TimeSpan.Zero);
+            var phases = RunThrottledActivation(pressLatency ?? TimeSpan.Zero);
+            LogIfStalled(handlerEntry, phases);
         }
         finally
         {
@@ -70,7 +71,8 @@ internal sealed class ActivationHandler
         }
     }
 
-    private void RunThrottledActivation(TimeSpan pressLatency)
+    // Returns the durations of the two phases that can stall; both are zero on every skip path.
+    private ActivationPhases RunThrottledActivation(TimeSpan pressLatency)
     {
         // Created, acquired, released, and disposed within this one activation, never cached in
         // a field: a live cached handle would make CrashRepair's createdNew liveness check read
@@ -80,6 +82,7 @@ internal sealed class ActivationHandler
         using var guardMutex = new Mutex(initiallyOwned: false, _guardMutexName);
         var acquired = false;
         var performedAttach = false;
+        var phases = default(ActivationPhases);
 
         try
         {
@@ -97,7 +100,7 @@ internal sealed class ActivationHandler
             {
                 _logger.Log("Activation skipped: the guard mutex is held by another instance.");
 
-                return;
+                return phases;
             }
 
             // Dated from the press, not from this handling: a double activation queued behind a
@@ -112,7 +115,7 @@ internal sealed class ActivationHandler
             {
                 _logger.Log($"Activation skipped: the press was within {ThrottleThresholdMs}ms of the previous handling.");
 
-                return;
+                return phases;
             }
 
             if (_sharedState.TryReadTimeoutRepair(out _) && _restorePending(_sharedState))
@@ -122,13 +125,26 @@ internal sealed class ActivationHandler
 
             _sharedState.WriteThrottleTick(_tickCount());
 
+            var settingsStart = _timestamp();
+            long? closeStart = null;
+
             try
             {
-                performedAttach = _runClose(_settings());
+                var snapshot = _settings();
+                closeStart = _timestamp();
+                performedAttach = _runClose(snapshot);
             }
             catch (Exception ex)
             {
                 _logger.Log(ex.ToString());
+            }
+            finally
+            {
+                // Measured in finally so a close that stalls and then throws still reports its
+                // duration; a throwing settings snapshot attributes the whole span to settings.
+                var end = _timestamp();
+                var boundary = closeStart ?? end;
+                phases = new ActivationPhases(Stopwatch.GetElapsedTime(settingsStart, boundary), Stopwatch.GetElapsedTime(boundary, end));
             }
         }
         finally
@@ -142,6 +158,18 @@ internal sealed class ActivationHandler
         if (performedAttach)
         {
             _dispatchHealer();
+        }
+
+        return phases;
+    }
+
+    private void LogIfStalled(long handlerEntry, ActivationPhases phases)
+    {
+        var total = Stopwatch.GetElapsedTime(handlerEntry, _timestamp());
+
+        if (total.TotalMilliseconds >= StallLogThresholdMs)
+        {
+            _logger.Log($"Activation took {total.TotalMilliseconds:F0} ms (settings {phases.Settings.TotalMilliseconds:F0} ms, close {phases.Close.TotalMilliseconds:F0} ms).");
         }
     }
 
@@ -158,10 +186,14 @@ internal sealed class ActivationHandler
         }
 
         var latency = Stopwatch.GetElapsedTime(launchQpc, handlerEntry);
-        var deferred = launchQpc < _lastHandlerExit ? " (deferred)" : string.Empty;
+        var deferred = launchQpc < _lastHandlerExit
+            ? $" (deferred; queued {Stopwatch.GetElapsedTime(launchQpc, _lastHandlerExit).TotalMilliseconds:F0} ms behind the previous handling)"
+            : string.Empty;
         var button = buttonCode == TriggerButtonXButton2 ? "XButton2" : $"code {buttonCode}";
         _logger.Log($"Activation{deferred}: latency {latency.TotalMilliseconds:F1} ms (button {button}).");
 
         return latency;
     }
+
+    private readonly record struct ActivationPhases(TimeSpan Settings, TimeSpan Close);
 }

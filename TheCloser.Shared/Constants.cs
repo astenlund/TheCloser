@@ -19,6 +19,11 @@ public static class Constants
     // Shared between the app's fallback path and the daemon's IPC path.
     public const long ThrottleThresholdMs = 200;
 
+    // A handling or a keystroke injection at or above this duration is logged with its breakdown
+    // so a stall (observed: SendInput blocked 2 s on a slow low-level keyboard hook) is
+    // attributable later.
+    public const long StallLogThresholdMs = 100;
+
     // Trigger button codes for the activation payload. Duplicated by hand in TheCloser.ahk
     // (AutoHotkey cannot consume this file); keep in sync.
     public const int TriggerButtonUnknown = 0;

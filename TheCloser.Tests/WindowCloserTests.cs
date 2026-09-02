@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using GregsStack.InputSimulatorStandard.Native;
 using Microsoft.Extensions.Configuration;
 using TheCloser.Shared;
@@ -134,6 +135,78 @@ public sealed class WindowCloserTests : IDisposable
         // Assert
         Assert.Equal(0, keystrokes);
         Assert.Contains("Failed to set foreground window", File.ReadAllText(_tempLogger.LogPath));
+    }
+
+    [Fact]
+    public async Task SendKeyPressIfForeground_SlowKeystrokeInjection_LogsTheDuration()
+    {
+        // Arrange: SendInput blocks 2 s (observed with a slow low-level keyboard hook); the
+        // duration must be attributable from the log.
+        var now = 0L;
+        var closer = new WindowCloser(
+            new ConfigurationBuilder().Build(),
+            _sharedState,
+            _tempLogger.Logger,
+            new FakeActivator(),
+            (_, _) => now += Stopwatch.Frequency * 2,
+            _ => { },
+            () => now);
+
+        // Act
+        closer.SendKeyPressIfForeground(new IntPtr(42), TitleBarClickPosition.Left, VirtualKeyCode.VK_W, VirtualKeyCode.CONTROL);
+        await _tempLogger.DrainAsync();
+
+        // Assert
+        Assert.Contains("Keystroke injection took 2000 ms", File.ReadAllText(_tempLogger.LogPath));
+    }
+
+    [Fact]
+    public async Task SendKeyPressIfForeground_FastKeystrokeInjection_LogsNothingAboutInjection()
+    {
+        // Arrange: a normal injection stays under the stall threshold and must not grow the log.
+        var closer = new WindowCloser(
+            new ConfigurationBuilder().Build(),
+            _sharedState,
+            _tempLogger.Logger,
+            new FakeActivator(),
+            (_, _) => { },
+            _ => { },
+            () => 0L);
+
+        // Act
+        closer.SendKeyPressIfForeground(new IntPtr(42), TitleBarClickPosition.Left, VirtualKeyCode.VK_W, VirtualKeyCode.CONTROL);
+        await _tempLogger.DrainAsync();
+
+        // Assert: nothing at all was logged, so the file may not even exist.
+        var log = File.Exists(_tempLogger.LogPath) ? File.ReadAllText(_tempLogger.LogPath) : string.Empty;
+        Assert.DoesNotContain("Keystroke injection", log);
+    }
+
+    [Fact]
+    public void TryGetProcessName_LiveProcess_ReturnsItsName()
+    {
+        // Arrange
+        using var current = Process.GetCurrentProcess();
+
+        // Act
+        var name = WindowCloser.TryGetProcessName(current.Id);
+
+        // Assert
+        Assert.Equal(current.ProcessName, name);
+    }
+
+    [Fact]
+    public void TryGetProcessName_ExitedProcess_ReturnsNull()
+    {
+        // Arrange: a child that has already exited leaves an id no live process owns.
+        using var child = Process.Start(new ProcessStartInfo("cmd.exe", "/c exit") { CreateNoWindow = true, UseShellExecute = false })!;
+        child.WaitForExit();
+
+        // Act
+        var name = WindowCloser.TryGetProcessName(child.Id);
+
+        // Assert
+        Assert.Null(name);
     }
 
     [Fact]

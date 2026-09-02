@@ -30,7 +30,7 @@ Reported: 2026-09-02. Fixed: 2026-09-02 in the commit titled "fix(shared): date 
 
 **Fix:** the throttle now subtracts the plausible press-to-handler latency from the current tick before comparing against the stored tick, so a press is judged by when the user pressed, not by when the loop reached it. The window is symmetric: a press landing between the previous handler's entry and its tick write yields a small negative elapsed value and is skipped too, while a stale-format or foreign tick still reads as a huge magnitude and stays unthrottled. When the payload is implausible the latency counts as zero and the throttle is equivalent to before: the only new skip case is a tick in the 200ms ahead of now, unreachable with the monotonic tick count both writers share. The standalone fallback app's throttle is unchanged: it is its own press.
 
-**Not fixed, by design:** the first tab still closes late when SendInput stalls; Windows runs every low-level keyboard hook synchronously before delivering injected input, and the daemon cannot shorten that.
+**Not fixed, by design:** the first tab still closes late when SendInput stalls; Windows runs every low-level keyboard hook synchronously before delivering injected input, and the daemon cannot shorten that. Stall instrumentation (injection duration, handler phase breakdown, hook timeout at startup) landed in the commit titled "feat(shared): log stalled activation phases" so a recurrence is attributable.
 
 ### Intermittent slow invocation after idle
 
