@@ -272,9 +272,10 @@ public class ActivationHandlerTests
     [Fact]
     public void PressLandingJustBeforeThePreviousTickWrite_IsSkipped()
     {
-        // Arrange: the second press lands after the first handler's entry but before its tick
-        // write, so the press-dated elapsed value is slightly negative. That is still a double
-        // activation and must be throttled; only a large magnitude means a foreign tick.
+        // Arrange: the first press carries no payload, so its anchor is its handling tick, which
+        // postdates a second press that landed during that handling; the press-dated elapsed
+        // value is slightly negative. That is still a double activation and must be throttled;
+        // only a large magnitude means a foreign tick.
         using var h = new Harness();
         var handler = h.Build();
         handler.HandleActivation();
@@ -288,6 +289,31 @@ public class ActivationHandlerTests
 
         // Assert
         Assert.Single(h.Events, e => e == "close");
+    }
+
+    [Fact]
+    public void GenuinePressShortlyAfterALateHandling_Closes()
+    {
+        // Arrange: press A's close stalls 2 s; genuine press B (500 ms after A) is queued behind
+        // it and handled late; genuine press C lands 100 ms after B's late handling. Anchored on
+        // B's handling time C would be dropped; anchored on B's press time it must close.
+        using var h = new Harness { CloseAdvance = Stopwatch.Frequency * 2 };
+        var handler = h.Build();
+        var pressA = h.Now;
+        handler.HandleActivation();
+        h.CloseAdvance = 0;
+        h.Tick += 2000;
+        h.State.WriteActivationPayload(pressA + Stopwatch.Frequency / 2, TriggerButtonXButton2);
+        handler.HandleActivation();
+        h.Now += Stopwatch.Frequency / 10;
+        h.Tick += 100;
+        h.State.WriteActivationPayload(h.Now, TriggerButtonXButton2);
+
+        // Act
+        handler.HandleActivation();
+
+        // Assert
+        Assert.Equal(3, h.Events.Count(e => e == "close"));
     }
 
     [Fact]
