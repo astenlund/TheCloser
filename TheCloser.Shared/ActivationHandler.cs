@@ -175,8 +175,8 @@ internal sealed class ActivationHandler
 
     private TimeSpan? LogAndMeasureLatency(long handlerEntry, long launchQpc, int buttonCode)
     {
-        var plausible = launchQpc > 0 && launchQpc <= handlerEntry
-            && Stopwatch.GetElapsedTime(launchQpc, handlerEntry) <= MaxPlausibleLatency;
+        var latency = Stopwatch.GetElapsedTime(launchQpc, handlerEntry);
+        var plausible = launchQpc > 0 && launchQpc <= handlerEntry && latency <= MaxPlausibleLatency;
 
         if (!plausible)
         {
@@ -185,7 +185,6 @@ internal sealed class ActivationHandler
             return null;
         }
 
-        var latency = Stopwatch.GetElapsedTime(launchQpc, handlerEntry);
         var deferred = launchQpc < _lastHandlerExit
             ? $" (deferred; queued {Stopwatch.GetElapsedTime(launchQpc, _lastHandlerExit).TotalMilliseconds:F0} ms behind the previous handling)"
             : string.Empty;
