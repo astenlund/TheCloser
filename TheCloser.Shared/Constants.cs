@@ -21,8 +21,9 @@ public static class Constants
 
     // A handling or a keystroke injection at or above this duration is logged with its breakdown
     // so a stall (observed: SendInput blocked 2 s on a slow low-level keyboard hook) is
-    // attributable later.
-    public const long StallLogThresholdMs = 100;
+    // attributable later. Calibrated above the measured normal close of 110 to 133 ms (50 ms settle
+    // sleep plus SendInput through the resident hook chain) so a routine press adds no log line.
+    public const long StallLogThresholdMs = 300;
 
     // Trigger button codes for the activation payload. Duplicated by hand in TheCloser.ahk
     // (AutoHotkey cannot consume this file); keep in sync.
