@@ -162,7 +162,7 @@ function Wait-TaskState {
     param([string] $Name, [bool] $Running, [int] $TimeoutSeconds)
     $stopwatch = [Diagnostics.Stopwatch]::StartNew()
     while ($stopwatch.Elapsed.TotalSeconds -lt $TimeoutSeconds) {
-        $state = (Get-ScheduledTask -TaskName $Name).State
+        $state = (Get-ScheduledTask -TaskName $Name -TaskPath '\').State
         if (($state -eq 'Running') -eq $Running) {
             return $true
         }
@@ -180,8 +180,8 @@ function Wait-TaskState {
 
 # Stop the task first: its logon instance would make the later start a silent no-op under the
 # default IgnoreNew multiple-instances policy.
-if ((Get-ScheduledTask -TaskName $TaskName).State -eq 'Running') {
-    Stop-ScheduledTask -TaskName $TaskName
+if ((Get-ScheduledTask -TaskName $TaskName -TaskPath '\').State -eq 'Running') {
+    Stop-ScheduledTask -TaskName $TaskName -TaskPath '\'
     if (-not (Wait-TaskState -Name $TaskName -Running $false -TimeoutSeconds 10)) {
         [Console]::Error.WriteLine("Task '$TaskName' did not leave the Running state within 10 seconds.")
         exit 1
@@ -200,7 +200,7 @@ Get-CimInstance Win32_Process -Filter "Name like 'AutoHotkey%'" |
         Stop-Process -Id $_.ProcessId -Force
     }
 
-Start-ScheduledTask -TaskName $TaskName
+Start-ScheduledTask -TaskName $TaskName -TaskPath '\'
 if (-not (Wait-TaskState -Name $TaskName -Running $true -TimeoutSeconds 5)) {
     [Console]::Error.WriteLine("Task '$TaskName' did not reach the Running state within 5 seconds of the start.")
     exit 1

@@ -127,13 +127,13 @@ if ($Task) {
 }
 
 if ($Task -and $Drift.Count -eq 0) {
-    Stop-ScheduledTask -TaskName $TaskName
+    Stop-ScheduledTask -TaskName $TaskName -TaskPath '\'
     if (-not (Wait-TaskState -Name $TaskName -Running $false -TimeoutSeconds 10)) {
         [Console]::Error.WriteLine("Task '$TaskName' did not leave Running within 10 seconds. Nothing restarted.")
         exit 1
     }
 
-    Start-ScheduledTask -TaskName $TaskName
+    Start-ScheduledTask -TaskName $TaskName -TaskPath '\'
     if (-not (Wait-TaskState -Name $TaskName -Running $true -TimeoutSeconds 5)) {
         [Console]::Error.WriteLine("Task '$TaskName' did not return to Running within 5 seconds of the start.")
         exit 1
