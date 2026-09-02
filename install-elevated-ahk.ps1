@@ -9,17 +9,30 @@
 # Every run registers, stops the running instance, sweeps stray AutoHotkey copies of the script,
 # starts the task, and exits nonzero if either state poll expires; remove any old unelevated
 # autostart by hand.
-# The script defaults to the TheCloser.ahk sitting next to it (deploy.ps1 copies both to the
-# deploy target), so no paths need passing when run from there.
+# The script defaults to the TheCloser.ahk sitting next to it and imports the task definition
+# from TheCloserTask.psm1 next to it (deploy.ps1 copies all three to the deploy target), so no
+# paths need passing when run from there; a copy run from elsewhere needs the module beside it.
 
 [CmdletBinding()]
 param(
     [string] $AhkScriptPath = (Join-Path $PSScriptRoot 'TheCloser.ahk'),
-    [string] $AhkExePath = 'C:\Program Files\AutoHotkey\AutoHotkeyU64.exe',
-    [string] $TaskName = 'TheCloser AutoHotkey (elevated)'
+    [string] $AhkExePath,
+    [string] $TaskName
 )
 
 $ErrorActionPreference = 'Stop'
+
+# The task definition (and the drift test deploy.ps1 runs against it) lives in the module next to
+# this script, so the installer and the deploy script cannot disagree about what the task should be.
+Import-Module (Join-Path $PSScriptRoot 'TheCloserTask.psm1') -Force
+
+if ([string]::IsNullOrEmpty($AhkExePath)) {
+    $AhkExePath = Get-TheCloserTaskDefaultAhkExePath
+}
+
+if ([string]::IsNullOrEmpty($TaskName)) {
+    $TaskName = Get-TheCloserTaskDefaultName
+}
 
 if ($null -eq ('TheCloser.NativeCommandLine' -as [type])) {
     Add-Type -TypeDefinition @'
@@ -133,13 +146,17 @@ if (!(Test-Path $AhkScriptPath)) {
     throw "AutoHotkey script not found at '$AhkScriptPath'. Pass -AhkScriptPath if it lives elsewhere."
 }
 
-$action = New-ScheduledTaskAction -Execute $AhkExePath -Argument "`"$AhkScriptPath`""
-$trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
-$principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType Interactive -RunLevel Highest
-$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero)
+$spec = Get-TheCloserTaskSpec -AhkExePath $AhkExePath -AhkScriptPath $AhkScriptPath
+$registration = New-TheCloserTaskRegistration -Spec $spec
 
-Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
+Register-ScheduledTask -TaskName $TaskName @registration -Force | Out-Null
 Write-Output "Registered scheduled task '$TaskName' (at logon, elevated, user $env:USERNAME)."
+
+$drift = @(Compare-TheCloserTaskSpec -Task (Get-ScheduledTask -TaskName $TaskName -TaskPath '\') -Spec $spec
+if ($drift.Count -gt 0) {
+    [Console]::Error.WriteLine("Task '$TaskName' does not read back as registered: $($drift -join '; ')")
+    exit 1
+}
 
 function Wait-TaskState {
     param([string] $Name, [bool] $Running, [int] $TimeoutSeconds)

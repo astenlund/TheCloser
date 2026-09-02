@@ -53,20 +53,26 @@ $Tfm = ([xml](Get-Content (Join-Path $PSScriptRoot 'Directory.Build.props'))).Pr
 Copy-Item (Join-Path $PSScriptRoot "TheCloser\bin\Release\$Tfm\win-x64\publish\TheCloser.exe") $Destination -Force -Verbose
 Copy-Item (Join-Path $PSScriptRoot "TheCloser.Daemon\bin\Release\$Tfm\win-x64\publish\TheCloser.Daemon.exe") $Destination -Force -Verbose
 
-# The invocation layer ships alongside the binaries: the AHK trigger and per-machine elevated-task
-# installer travel to other machines through the synced Bin folder.
+# The invocation layer ships alongside the binaries: the AHK trigger, the per-machine elevated-task
+# installer, and the task-definition module both scripts share travel to other machines through
+# the synced Bin folder.
 Copy-Item (Join-Path $PSScriptRoot 'TheCloser.ahk') $Destination -Force -Verbose
 Copy-Item (Join-Path $PSScriptRoot 'install-elevated-ahk.ps1') $Destination -Force -Verbose
+Copy-Item (Join-Path $PSScriptRoot 'TheCloserTask.psm1') $Destination -Force -Verbose
 
 # Restart the elevated AutoHotkey task so the just-copied script (and, via its auto-execute,
-# the just-copied daemon) take over without a manual step. Task-state polls sidestep process
-# inspection: an unelevated shell cannot read an elevated process's command line. Unlike the
-# installer, this branch deliberately runs no stray-instance sweep: on a machine already running
-# the deployed chain the only instance to manage is the task-hosted one the stop-poll just ended.
-# This sequence is not an atomic task reservation: an external start after the stop poll can make
-# IgnoreNew discard this start, while the post-start Running state cannot distinguish that race.
-# The personal single-user deployment workflow accepts that residual external-concurrency boundary.
-$TaskName = 'TheCloser AutoHotkey (elevated)'
+# the just-copied daemon) take over without a manual step, or re-register it through the
+# installer when it is missing or any managed field of its definition (paths, trigger, principal,
+# run limits) differs from what the installer would register. Task-state polls sidestep
+# process inspection: an unelevated shell cannot read an elevated process's command line. Unlike
+# the installer, the restart branch deliberately runs no stray-instance sweep: on a machine already
+# running the deployed chain the only instance to manage is the task-hosted one the stop-poll just
+# ended. This sequence is not an atomic task reservation: an external start after the stop poll can
+# make IgnoreNew discard this start, while the post-start Running state cannot distinguish that
+# race. The personal single-user deployment workflow accepts that residual external-concurrency
+# boundary.
+Import-Module (Join-Path $Destination 'TheCloserTask.psm1') -Force
+$TaskName = Get-TheCloserTaskDefaultName
 
 function Get-TheCloserTask {
     param([string] $Name)
@@ -110,8 +116,17 @@ function Wait-TaskState {
 }
 
 $Task = Get-TheCloserTask -Name $TaskName
+$Drift = @()
 
 if ($Task) {
+    $Spec = Get-TheCloserTaskSpec -AhkExePath (Get-TheCloserTaskDefaultAhkExePath) -AhkScriptPath (Join-Path $Destination 'TheCloser.ahk')
+    $Drift = @(Compare-TheCloserTaskSpec -Task $Task -Spec $Spec)
+    if ($Drift.Count -gt 0) {
+        Write-Output "Task '$TaskName' differs from the installer's definition; re-registering. $($Drift -join '; ')"
+    }
+}
+
+if ($Task -and $Drift.Count -eq 0) {
     Stop-ScheduledTask -TaskName $TaskName
     if (-not (Wait-TaskState -Name $TaskName -Running $false -TimeoutSeconds 10)) {
         [Console]::Error.WriteLine("Task '$TaskName' did not leave Running within 10 seconds. Nothing restarted.")
@@ -127,19 +142,19 @@ if ($Task) {
     Write-Output "Restarted task '$TaskName'."
 }
 else {
-    # First deploy on this machine: register through the deployed installer copy so the task
-    # binds to the deploy target's script, not this working tree. One UAC prompt, once per machine.
-    # ArgumentList entries are joined with spaces and never quoted, and the configured
-    # Destination contains a space, so the -File path is quoted explicitly.
+    # First deploy on this machine, or a drifted definition: register through the deployed
+    # installer copy so the task binds to the deploy target's script, not this working tree. One
+    # UAC prompt per registration. ArgumentList entries are joined with spaces and never quoted,
+    # and the configured Destination contains a space, so the -File path is quoted explicitly.
     $Installer = Start-Process pwsh -Verb RunAs -Wait -PassThru -ArgumentList '-NoProfile', '-File', ('"{0}"' -f (Join-Path $Destination 'install-elevated-ahk.ps1'))
     if ($Installer.ExitCode -ne 0) {
-        [Console]::Error.WriteLine("First-deploy installer exited with code $($Installer.ExitCode). Nothing verified.")
+        [Console]::Error.WriteLine("Installer exited with code $($Installer.ExitCode). Nothing verified.")
         exit $Installer.ExitCode
     }
 
     $Task = Get-TheCloserTask -Name $TaskName
     if ($null -eq $Task -or -not (Wait-TaskState -Name $TaskName -Running $true -TimeoutSeconds 5)) {
-        [Console]::Error.WriteLine("First-deploy install did not leave task '$TaskName' running. Nothing verified.")
+        [Console]::Error.WriteLine("Install did not leave task '$TaskName' running. Nothing verified.")
         exit 1
     }
 
