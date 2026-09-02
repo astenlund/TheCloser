@@ -20,6 +20,7 @@ public static class Program
         try
         {
             logger = new Logger(AssemblyName);
+            ProcessPriority.EnsureCurrentAtLeastNormal(logger.Log);
 
             var exeDirectory = Path.GetDirectoryName(Environment.ProcessPath)!;
 

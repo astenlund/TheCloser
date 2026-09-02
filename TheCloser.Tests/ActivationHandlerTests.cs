@@ -192,8 +192,9 @@ public class ActivationHandlerTests
     [Fact]
     public async Task SlowClose_LogsThePhaseBreakdown()
     {
-        // Arrange: the close phase stalls 2 s (observed: SendInput blocked on a slow low-level
-        // hook); the handling total and the close phase must be attributable from the log.
+        // Arrange: the close phase stalls 2 s (observed: SendInput blocked while the daemon starved
+        // at Below Normal priority); the handling total and the close phase must be attributable
+        // from the log.
         using var h = new Harness { CloseAdvance = Stopwatch.Frequency * 2 };
         var handler = h.Build();
 
@@ -255,9 +256,9 @@ public class ActivationHandlerTests
     public async Task DeferredPressWithinThrottleOfPreviousHandling_IsSkippedWhenHandledLate()
     {
         // Arrange: a mouse double activation 90 ms after the first press, queued behind a first
-        // close that stalled the loop for 2 s (observed: SendInput blocked on a slow low-level
-        // hook). Judged by handling time the window has long expired; judged by press time it is
-        // inside the window and must be skipped.
+        // close that stalled the loop for 2 s (observed: SendInput blocked while the daemon starved
+        // at Below Normal priority). Judged by handling time the window has long expired; judged by
+        // press time it is inside the window and must be skipped.
         using var h = new Harness { CloseAdvance = Stopwatch.Frequency * 2 };
         var handler = h.Build();
         var firstPress = h.Now;

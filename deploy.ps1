@@ -63,7 +63,7 @@ Copy-Item (Join-Path $PSScriptRoot 'TheCloserTask.psm1') $Destination -Force -Ve
 # Restart the elevated AutoHotkey task so the just-copied script (and, via its auto-execute,
 # the just-copied daemon) take over without a manual step, or re-register it through the
 # installer when it is missing or any managed field of its definition (paths, trigger, principal,
-# run limits) differs from what the installer would register. Task-state polls sidestep
+# priority, run limits) differs from what the installer would register. Task-state polls sidestep
 # process inspection: an unelevated shell cannot read an elevated process's command line. Unlike
 # the installer, the restart branch deliberately runs no stray-instance sweep: on a machine already
 # running the deployed chain the only instance to manage is the task-hosted one the stop-poll just

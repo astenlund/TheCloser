@@ -23,6 +23,7 @@ public static class Program
             {
                 case DaemonStartArgument:
                     Logger.Log("Daemon starting...");
+                    ProcessPriority.EnsureCurrentAtLeastNormal(Logger.Log);
                     Logger.Log(LowLevelHooksTimeoutProbe.Describe());
                     Run();
                     break;

@@ -140,8 +140,8 @@ public sealed class WindowCloserTests : IDisposable
     [Fact]
     public async Task SendKeyPressIfForeground_SlowKeystrokeInjection_LogsTheDuration()
     {
-        // Arrange: SendInput blocks 2 s (observed with a slow low-level keyboard hook); the
-        // duration must be attributable from the log.
+        // Arrange: SendInput blocks 2 s (observed while the daemon starved at Below Normal
+        // priority); the duration must be attributable from the log.
         var now = 0L;
         var closer = new WindowCloser(
             new ConfigurationBuilder().Build(),

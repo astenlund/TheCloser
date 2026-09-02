@@ -104,13 +104,13 @@ internal sealed class ActivationHandler
             }
 
             // Dated from the press on both sides, not from the handling: a double activation queued
-            // behind a stalled close (observed: SendInput blocked 2 s on a slow low-level hook) is
-            // still a double activation when the loop finally reaches it, and a genuine press
-            // shortly after a late handling is not one. The window is symmetric because the tick
-            // count's granularity is coarser than the QPC-derived latency, and because an anchor
-            // written from handling time (an implausible payload, or the fallback app) can postdate
-            // a press that landed during that handling; a stale-format or foreign tick reads as a
-            // huge magnitude and stays unthrottled.
+            // behind a stalled close (observed: SendInput blocked 2 s while the daemon starved at
+            // Below Normal priority under full-core load) is still a double activation when the loop
+            // finally reaches it, and a genuine press shortly after a late handling is not one. The
+            // window is symmetric because the tick count's granularity is coarser than the
+            // QPC-derived latency, and because an anchor written from handling time (an implausible
+            // payload, or the fallback app) can postdate a press that landed during that handling; a
+            // stale-format or foreign tick reads as a huge magnitude and stays unthrottled.
             var pressTick = _tickCount() - (long)pressLatency.TotalMilliseconds;
             var elapsedSinceLastRun = pressTick - _sharedState.ReadThrottleTick();
 

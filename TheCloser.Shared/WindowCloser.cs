@@ -118,9 +118,10 @@ internal class WindowCloser
 
             if (injection.TotalMilliseconds >= StallLogThresholdMs)
             {
-                // SendInput returns only after every low-level keyboard hook has run, so a long
-                // injection means an unresponsive hook owner, not a busy target. The foreground
-                // owner is named to exclude a focus change during the stall.
+                // SendInput returns only after every low-level keyboard hook has run and this
+                // thread has been rescheduled after each, so a long injection means a starved
+                // caller or an unresponsive hook owner, never a busy target. The foreground owner
+                // is named to exclude a focus change during the stall.
                 _logger.Log($"Keystroke injection took {injection.TotalMilliseconds:F0} ms; foreground now: {DescribeForegroundProcess()}.");
             }
         }

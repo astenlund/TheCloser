@@ -7,6 +7,12 @@
 
 Set-StrictMode -Version Latest
 
+# Task Scheduler priority 5 is NORMAL_PRIORITY_CLASS with THREAD_PRIORITY_NORMAL. The default (7)
+# is BELOW_NORMAL_PRIORITY_CLASS, inherited by the AutoHotkey script and by the daemon and fallback
+# app it launches; under CPU saturation by normal-priority work a below-normal thread starves,
+# which stretched one SendInput inside the daemon to 10 s in the 2026-09-02 investigation.
+$script:TaskPriorityNormal = 5
+
 function Get-TheCloserTaskDefaultAhkExePath {
     return 'C:\Program Files\AutoHotkey\AutoHotkeyU64.exe'
 }
@@ -30,6 +36,7 @@ function Get-TheCloserTaskSpec {
         PrincipalUserId          = "$env:USERDOMAIN\$env:USERNAME"
         LogonType                = 'Interactive'
         RunLevel                 = 'Highest'
+        Priority                 = $script:TaskPriorityNormal
         ExecutionTimeLimit       = 'PT0S'
         DisallowStartIfOnBatteries = $false
         StopIfGoingOnBatteries   = $false
@@ -44,7 +51,7 @@ function New-TheCloserTaskRegistration {
         Action    = New-ScheduledTaskAction -Execute $Spec.Execute -Argument $Spec.Arguments
         Trigger   = New-ScheduledTaskTrigger -AtLogOn -User $Spec.TriggerUserId
         Principal = New-ScheduledTaskPrincipal -UserId $Spec.PrincipalUserId -LogonType $Spec.LogonType -RunLevel $Spec.RunLevel
-        Settings  = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero)
+        Settings  = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero) -Priority $Spec.Priority
     }
 }
 
@@ -55,6 +62,7 @@ function Get-TheCloserTaskState {
 
     $action = @($Task.Actions)[0]
     $trigger = @($Task.Triggers)[0]
+    $principal = $Task.Principal
     $settings = $Task.Settings
 
     return [ordered]@{
@@ -62,12 +70,13 @@ function Get-TheCloserTaskState {
         Arguments                = if ($action) { $action.Arguments } else { $null }
         TriggerClass             = if ($trigger) { $trigger.CimClass.CimClassName } else { $null }
         TriggerUserId            = if ($trigger -and $trigger.CimClass.CimClassName -eq 'MSFT_TaskLogonTrigger') { $trigger.UserId } else { $null }
-        PrincipalUserId          = $Task.Principal.UserId
-        LogonType                = [string] $Task.Principal.LogonType
-        RunLevel                 = [string] $Task.Principal.RunLevel
-        ExecutionTimeLimit       = $settings.ExecutionTimeLimit
-        DisallowStartIfOnBatteries = $settings.DisallowStartIfOnBatteries
-        StopIfGoingOnBatteries   = $settings.StopIfGoingOnBatteries
+        PrincipalUserId          = if ($principal) { $principal.UserId } else { $null }
+        LogonType                = if ($principal) { [string] $principal.LogonType } else { $null }
+        RunLevel                 = if ($principal) { [string] $principal.RunLevel } else { $null }
+        Priority                 = if ($settings) { $settings.Priority } else { $null }
+        ExecutionTimeLimit       = if ($settings) { $settings.ExecutionTimeLimit } else { $null }
+        DisallowStartIfOnBatteries = if ($settings) { $settings.DisallowStartIfOnBatteries } else { $null }
+        StopIfGoingOnBatteries   = if ($settings) { $settings.StopIfGoingOnBatteries } else { $null }
     }
 }
 
@@ -98,16 +107,18 @@ function Compare-TheCloserTaskSpec {
 
     $state = Get-TheCloserTaskState -Task $Task
     $caseInsensitive = @('Execute', 'Arguments', 'TriggerUserId', 'PrincipalUserId')
-    $differences = foreach ($field in $Spec.Keys) {
+    $differences = @(foreach ($field in $Spec.Keys) {
         $expected = ConvertTo-ComparableTaskValue -Field $field -Value ([string] $Spec[$field])
         $actual = ConvertTo-ComparableTaskValue -Field $field -Value ([string] $state[$field])
         $comparison = if ($caseInsensitive -contains $field) { [StringComparison]::OrdinalIgnoreCase } else { [StringComparison]::Ordinal }
         if (-not [string]::Equals($expected, $actual, $comparison)) {
             "{0}: expected '{1}', found '{2}'" -f $field, $expected, $actual
         }
-    }
+    })
 
-    return @($differences)
+    # Unrolled by the pipeline like any PowerShell return; callers wrap the call in @(...) so no
+    # drift reads as an empty array and one difference as a one-element array.
+    return $differences
 }
 
 Export-ModuleMember -Function Get-TheCloserTaskDefaultAhkExePath, Get-TheCloserTaskDefaultName, Get-TheCloserTaskSpec, New-TheCloserTaskRegistration, Get-TheCloserTaskState, Compare-TheCloserTaskSpec

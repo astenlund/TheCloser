@@ -20,9 +20,9 @@ public static class Constants
     public const long ThrottleThresholdMs = 200;
 
     // A handling or a keystroke injection at or above this duration is logged with its breakdown
-    // so a stall (observed: SendInput blocked 2 s on a slow low-level keyboard hook) is
-    // attributable later. Calibrated above the measured normal close of 110 to 133 ms (50 ms settle
-    // sleep plus SendInput through the resident hook chain) so a routine press adds no log line.
+    // so a stall (observed: SendInput blocked 2 s while the daemon starved at Below Normal
+    // priority under full-core load) is attributable later. Calibrated above the close as measured
+    // before the priority fix, 110 to 133 ms, so a routine press adds no log line.
     public const long StallLogThresholdMs = 300;
 
     // Trigger button codes for the activation payload. Duplicated by hand in TheCloser.ahk
