@@ -21,9 +21,11 @@ public static class Constants
 
     // A handling or a keystroke injection at or above this duration is logged with its breakdown
     // so a stall (observed: SendInput blocked 2 s while the daemon starved at Below Normal
-    // priority under full-core load) is attributable later. Calibrated above the close as measured
-    // before the priority fix, 110 to 133 ms, so a routine press adds no log line.
-    public const long StallLogThresholdMs = 300;
+    // priority under full-core load) is attributable later. Aligned with the throttle window: a
+    // handling that outlasts it is the kind that lets a queued double activation reach the
+    // throttle late, while a routine close (about 65 ms at Normal priority, mostly the settle
+    // sleep) stays well below it and adds no log line.
+    public const long StallLogThresholdMs = ThrottleThresholdMs;
 
     // Trigger button codes for the activation payload. Duplicated by hand in TheCloser.ahk
     // (AutoHotkey cannot consume this file); keep in sync.
