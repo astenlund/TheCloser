@@ -26,6 +26,10 @@ against the source by the reviewers before inclusion.
 
 ## Robustness and hardening
 
+### Anchor the activation throttle on the press QPC in both writers
+
+The daemon's throttle in `ActivationHandler` is already press-to-press, but it mixes two clocks: the stored anchor is an `Environment.TickCount64` estimate (handler tick minus the QPC-derived latency), and the tick count's ~16ms granularity means two presses consumed separately can yield a slightly negative elapsed value, which is why the throttle keeps a symmetric window instead of a one-sided one. Preferred shape: store the press QPC itself as the anchor (the daemon has it from the payload; the standalone fallback app can stamp `Stopwatch.GetTimestamp()` at `Main` entry, an upper bound of its own press), compare QPC to QPC, and drop the negative branch, since presses are then strictly ordered. Changes the units of the shared-memory throttle slot, so both writers and `SharedStateTests` move together. The same change should revisit the 10 s latency plausibility cutoff: a press just over it is anchored at handling time while a double activation just under it is press-dated, and the two anchors disagree by the whole stall; a loop stall that long has never been observed, so this is a design note rather than a live bug.
+
 ### Logger rotation only runs at construction
 
 `RotateIfTooLarge` is called only from the `Logger` constructor. The daemon constructs its logger once and can run for months, so once its log passes 1 MB nothing rotates it until a daemon restart; growth is unbounded during a run. Daemon IPC also moved the permanent per-press latency instrument into this log, increasing the growth rate and making the item a strongly preferred follow-up without blocking activation correctness. Move the size check into the queued write path (e.g. check `stream.Length` after opening, rotate on the next write), keeping the swallow-on-failure semantics.
