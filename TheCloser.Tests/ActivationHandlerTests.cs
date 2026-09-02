@@ -136,8 +136,10 @@ public class ActivationHandlerTests
         // Act
         handler.HandleActivation();
 
-        // Assert: the queued wait is the span from the press to the previous handler's exit.
+        // Assert: the queued wait is the span from the press to the previous handler's exit, and
+        // the deferred press was handled, not merely logged.
         Assert.Contains("(deferred; queued 1 ms behind the previous handling)", await h.ReadLogAsync());
+        Assert.Equal(2, h.Events.Count(e => e == "close"));
     }
 
     [Fact]
@@ -160,8 +162,10 @@ public class ActivationHandlerTests
         // Act
         handler.HandleActivation();
 
-        // Assert
+        // Assert: marked deferred, and handled (the first and third activations close; the second
+        // was the throttle skip).
         Assert.Contains("(deferred;", await h.ReadLogAsync());
+        Assert.Equal(2, h.Events.Count(e => e == "close"));
     }
 
     [Fact]
@@ -461,7 +465,8 @@ public class ActivationHandlerTests
         h.CloseResult = false;
         handler.HandleActivation();
 
-        // Assert
+        // Assert: both activations closed, and only the attach close dispatched the healer.
+        Assert.Equal(2, h.Events.Count(e => e == "close"));
         Assert.Equal(1, h.Events.Count(e => e == "healer"));
     }
 
