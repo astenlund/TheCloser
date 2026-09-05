@@ -152,7 +152,7 @@ $registration = New-TheCloserTaskRegistration -Spec $spec
 Register-ScheduledTask -TaskName $TaskName @registration -Force | Out-Null
 Write-Output "Registered scheduled task '$TaskName' (at logon, elevated, normal priority, user $env:USERNAME)."
 
-$drift = @(Compare-TheCloserTaskSpec -Task (Get-ScheduledTask -TaskName $TaskName -TaskPath '\') -Spec $spec
+$drift = @(Compare-TheCloserTaskSpec -Task (Get-ScheduledTask -TaskName $TaskName -TaskPath '\') -Spec $spec)
 if ($drift.Count -gt 0) {
     [Console]::Error.WriteLine("Task '$TaskName' does not read back as registered: $($drift -join '; ')")
     exit 1
