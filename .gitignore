@@ -242,8 +242,9 @@ ModelManifest.xml
 .fake/
 .idea/
 
-# Claude Code local (per-machine) settings
+# Claude Code local (per-machine) settings and review reports
 .claude/settings.local.json
+.claude/reviews/
 
 # Machine-local deploy settings (see deploy.settings.example.psd1)
 deploy.settings.psd1
