@@ -84,7 +84,7 @@ Reported: 2026-07-10. Fixed: 2026-07-11 in 6fbbbc3 (deployed same day).
 
 **Verified interactively 2026-07-11** (explorer focused, viewport hover, per-rung trace): base case at 16:27, minimize-then-restore at 16:37, two-windows-hover-the-stale-one at 16:39. All three: child-HWND rung fails (expected; activating child windows directly is unreliable), root rung succeeds natively in ~140ms, click fallback never engages.
 
-**Durable learnings** (full diagnosis in this entry's git history in `BUGS.md`):
+**Durable learnings** (full diagnosis in this entry's Git history in `.claude/BUGS.md`, the index's path before the backlog moved to `.nightshift/`):
 
 - The lock-timeout suppression (ForegroundLockSuppression) lifts only the timeout-based denial rule; the input-lock rule requires sharing the foreground owner's input queue via AttachThreadInput.
 - Chrome's HWND hierarchy under the cursor varies by invocation: WindowFromPoint sometimes returns the Chrome_WidgetWin_1 root, sometimes a child. The ladder originally covered both with a target-then-root rung pair; the target rung was later dropped because SetForegroundWindow rejects child HWNDs even with foreground permission (verified in the 2026-07-11 traces: the child rung failed in the same permission context where the root rung succeeded), so the ladder activates the root directly.

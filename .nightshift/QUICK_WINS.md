@@ -14,7 +14,7 @@ Capture shorthand: name the refactor, describe the current smell in a sentence o
 
 **After adding a new entry, run `/nightshift:ready`** from the repo root to confirm it parses as a quick-wins work item against the real grammar in `skills/ready/ready.js`. Quick wins carry neither a `**Requires:**` nor an `**External:**` line, and ready reports one written on a quick win as a notice; the other failure mode to catch is an entry that doesn't parse as a `- ` bullet or `###` heading (ready reports it as a prose-only-section notice) while you can still fix it in the same session.
 
-All entries below come from the 2026-07-11 full-solution review; each was verified against the source by the reviewers before inclusion.
+Entries filed from the 2026-07-11 full-solution review were verified against the source by its reviewers before inclusion. Entries added since did not go through that review, and none is marked individually, so check an entry's premise against the source before acting on it.
 
 ## Robustness and hardening
 
