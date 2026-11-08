@@ -250,3 +250,4 @@ deploy.settings.psd1
 
 # Subagent scratch state (subagent-driven development)
 .superpowers/
+/.nightshift/runs/

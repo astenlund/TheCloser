@@ -1,22 +1,12 @@
 # Bugs (history)
 
-Fixed bugs, archived from `BUGS.md` so the active list stays scannable
-on session start. **Archaeological**: read only when consulted, not at
-session start. When a bug is fixed, append its entry here rather than
-to the active file.
+Fixed bugs, archived from `BUGS.md` so the active list stays scannable. **Archaeological**: read only when consulted. When a bug is fixed, append its entry here rather than to the active file.
 
-The bug breakout file at `bugs/<slug>.md` (when present) stays in place
-as the historical diagnosis record; the entry here is a brief
-description of the fix and the commit it landed in.
+The bug breakout file at `bugs/<slug>.md` (when present) stays in place as the historical diagnosis record; the entry here is a brief description of the fix and the commit it landed in.
 
 ## Cross-reference resolution
 
-`/nightshift:ready` does **not** scan this file. When a bug is fixed, every other
-`**Requires:**` line in `FEATURES.md` / `BUGS.md` that referenced it is
-edited at the same time to drop the now-satisfied reference (mirror of
-the `FEATURES.md` convention). The active `Requires:` lines therefore
-describe what is *currently* blocking; this file is purely
-archaeological.
+`/nightshift:ready` does **not** parse this file for work; it reads it only for the line-discipline check and the link checks, which verify links into it and count its links as keeping the records they name reachable. When a bug is fixed, every other `**Requires:**` line in `FEATURES.md` / `BUGS.md` that referenced it is edited at the same time to drop the now-satisfied reference (mirror of the `FEATURES.md` convention). The active `Requires:` lines therefore describe what is *currently* blocking; this file is purely archaeological.
 
 ## Entries
 
@@ -74,8 +64,7 @@ Reported: 2026-07-11. Mitigated: 2026-07-11 in fbd21fb.
 
 **Diagnosis:** `GetAsyncKeyState(VK_XBUTTON2)` read -32768: the OS held mouse button 5, the app's AutoHotkey invocation binding, as pressed. The physical release was lost, most plausibly because AttachThreadInput resynchronizes key state between attached threads and the invocation had just attached to explorer's own input thread (as target and likely foreground owner simultaneously) inside the ~70ms window where the release was in flight. AutoHotkey's mouse hook, believing XBUTTON2 was still held, then poisoned every subsequent click. Earlier same-day owner-attach invocations (Chrome targets) were harmless; the shell-as-target case is what lined up the race.
 
-**Immediate remedy (works if this ever recurs):** inject the missing release, then re-probe:
-`mouse_event(0x0100, 0, 0, 2, 0)` (MOUSEEVENTF_XUP, mouseData = XBUTTON2), e.g. via Add-Type P/Invoke in PowerShell; `GetAsyncKeyState(0x06)` should return 0 afterwards.
+**Immediate remedy (works if this ever recurs):** inject the missing release, then re-probe: `mouse_event(0x0100, 0, 0, 2, 0)` (MOUSEEVENTF_XUP, mouseData = XBUTTON2), e.g. via Add-Type P/Invoke in PowerShell; `GetAsyncKeyState(0x06)` should return 0 afterwards.
 
 **Mitigations:** TryActivateNatively detaches both threads immediately after SetForegroundWindow instead of holding the attaches through the 50ms settle wait (fbd21fb, exposure ~70ms to ~1ms). A preventive pre-attach release wait (also fbd21fb) was replaced in 5cd2667 by the reactive `TriggerButtonHealer`: the wait cost ~50-100ms of activation latency on every background-target invocation (AutoHotkey fires on M5-*down*, so the finger is still on the button when activation starts), whereas the healer costs nothing up front. After a close that performed an input attach, the app releases the single-instance guard mutex and lingers up to 2s polling the middle/X buttons; a genuine hold clears itself on release, while a stranded state reads down forever, so anything still down at the deadline gets its release injected (and logged). Unit-tested via injected probe/inject/sleep delegates.
 

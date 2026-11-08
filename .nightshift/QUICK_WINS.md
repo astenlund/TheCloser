@@ -1,28 +1,20 @@
 # Quick wins
 
-Refactors ready to land when time allows; not blocking any feature, but
-would improve the codebase meaningfully.
+Refactors ready to land when time allows. A quick win is always ready for its own pickup, but features and bugs may still list it as a prerequisite.
 
-This file is **one of four repo-local indexes** Claude reads on every
-session start (alongside `FEATURES.md`, `BUGS.md`, `PATTERNS.md`). Active
-entries are kept inline, organized under thematic `##` sections you
-invent as work emerges. When a quick win lands, append a shipped-note
-entry to [`QUICK_WINS_HISTORY.md`](QUICK_WINS_HISTORY.md); do not move
-it within this file. Negative-knowledge findings (approaches attempted
-and reverted) are first-class promotion candidates from the history
-into the relevant `.claude/patterns/<slug>.md` Cautionary tales sections.
+This file is **one of four repo-local indexes** agents consult on demand when relevant (alongside `FEATURES.md`, `BUGS.md`, `PATTERNS.md`). Active entries are kept inline, organized under thematic `##` sections you invent as work emerges. When a quick win lands, append a shipped-note entry to [`QUICK_WINS_HISTORY.md`](QUICK_WINS_HISTORY.md); do not move it within this file. Negative-knowledge findings (approaches attempted and reverted) are first-class promotion candidates from the history to the relevant `.nightshift/patterns/<slug>.md` Cautionary tales sections.
 
-Capture shorthand: name the refactor, describe the current smell in a
-sentence or two, sketch the preferred shape. A reader should be able to
-start work from the entry alone. Anchor entries on identifiers that
-survive refactors -- symbol names, entry titles, commit hashes, config
-keys -- never on line numbers, plan-phase ordinals, bullet positions,
-or temporal qualifiers ("new", "recent"): a precise locator that rots
-misleads harder than a coarse one that holds.
+Readiness and graduation are not approval. Agree meaningful commitments through an investigated understanding readback or concise spec; preserve valid agreement through compatible corrections and compaction.
 
-All entries below come from the 2026-07-11 full-solution review
-(`reviews/2026-07-11-full-solution-review.md`); each was verified
-against the source by the reviewers before inclusion.
+Backlog prose is one paragraph or one bullet per physical line, never hard-wrapped at a column: a search hit then shows the whole entry, the parsers anchor on whole lines, and an edit shows as one changed line instead of a reflowed block. `/nightshift:ready` reports a hard-wrapped file as a notice so it can receive a scoped repair before handover.
+
+**Before adding an entry, look for a feature to fold it into.** If an active feature in `FEATURES.md` would remove or rewrite the lines the fix touches, so that the fix would not survive the feature in its current form, add the fix as one line under that feature record's `## Carried fixes` heading, beginning with the name of the slice whose work removes those lines when the feature is sliced, giving the observed failure, its location, what the replacement must do and a link to the evidence, and create no entry here. When the feature would remove only part of what the fix changes, and that part fails and can be verified on its own, carry that part the same way and add an entry here for the rest that names the part carried and links the feature's `## Carried fixes` heading, while the carried line links its evidence rather than that entry, so either can ship first; a fix whose parts cannot be separated stays whole. A feature that merely touches the same module does not qualify, and neither does an Exploring draft, which has not settled what it replaces. A repeat adds a date to that line, never a paragraph. A tenuous match, or a feature invented so there is somewhere to fold into, means an entry here as before. A defect that blocks runs now gets the smallest stopgap, noted on its carried line, without an entry of its own. `FEATURES.md` describes how carried fixes ship and what happens to them when a feature is retired.
+
+Capture shorthand: name the refactor, describe the current smell in a sentence or two, sketch the preferred shape. A reader should be able to start work from the entry alone. Anchor entries on identifiers that survive refactors -- symbol names, entry titles, commit hashes, config keys -- never on line numbers, plan-phase ordinals, bullet positions, or temporal qualifiers ("new", "recent"): a precise locator that rots misleads harder than a coarse one that holds.
+
+**After adding a new entry, run `/nightshift:ready`** from the repo root to confirm it parses as a quick-wins work item against the real grammar in `skills/ready/ready.js`. Quick wins carry neither a `**Requires:**` nor an `**External:**` line, and ready reports one written on a quick win as a notice; the other failure mode to catch is an entry that doesn't parse as a `- ` bullet or `###` heading (ready reports it as a prose-only-section notice) while you can still fix it in the same session.
+
+All entries below come from the 2026-07-11 full-solution review; each was verified against the source by the reviewers before inclusion.
 
 ## Robustness and hardening
 
@@ -76,7 +68,7 @@ The current tips are clean (machine-local paths moved to the git-ignored `deploy
 
 Preferred shape: `git filter-repo --replace-text` mapping each personal string to the placeholder already used in `deploy.settings.example.psd1` (`C:\Path\To\Bin\TheCloser`), plus `--replace-message` if any commit message turns out to carry a needle. The stated requirement is that **each rewritten commit must still make sense in isolation**: after replacement, historical `deploy.ps1` reads as a placeholder hardcode that the psd1 refactor then externalizes, which is coherent; spot-check the refactor commit and the ahk/installer introduction commit afterwards to confirm.
 
-Decision points to settle with the user before running: whether commit author/committer identity is in scope (currently assumed NOT; it is deliberate); the exact needle list. Operational notes: filter-repo rewrites every SHA, so this is gated on user coordination: a user-driven force-push plus re-clone/reset on every machine with a checkout, at a moment when no other work is in flight. Re-verify afterwards with the same all-revisions grep returning empty. Side effect to flag when done: every commit SHA referenced in the `.claude` docs (BUGS_HISTORY entries, this file's history) goes stale; sweep and update them as part of the same change, as was done once before for the same reason (see the "update rebased commit SHAs" commit).
+Decision points to settle with the user before running: whether commit author/committer identity is in scope (currently assumed NOT; it is deliberate); the exact needle list. Operational notes: filter-repo rewrites every SHA, so this is gated on user coordination: a user-driven force-push plus re-clone/reset on every machine with a checkout, at a moment when no other work is in flight. Re-verify afterwards with the same all-revisions grep returning empty. Side effect to flag when done: every commit SHA referenced in the `.nightshift` docs (BUGS_HISTORY entries, this file's history) goes stale; sweep and update them as part of the same change, as was done once before for the same reason (see the "update rebased commit SHAs" commit).
 
 ### Analyzer enforcement
 
@@ -99,8 +91,4 @@ One-line items, each independently landable:
 
 ## History
 
-Implemented quick wins are archived in
-[`QUICK_WINS_HISTORY.md`](QUICK_WINS_HISTORY.md), read only when
-consulted (not at session start) so the active backlog above stays
-scannable. When a quick win lands, append its entry there rather
-than to this file.
+Implemented quick wins are archived in [`QUICK_WINS_HISTORY.md`](QUICK_WINS_HISTORY.md), consulted only on demand so the active backlog above stays scannable. When a quick win lands, append its entry there rather than to this file.
